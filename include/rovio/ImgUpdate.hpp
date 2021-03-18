@@ -587,7 +587,18 @@ ImgOutlierDetection<typename FILTERSTATE::mtState>,false>{
     assert(filterState.t_ == meas.aux().imgTime_);
     for(int i=0;i<mtState::nCam_;i++){
       if(doFrameVisualisation_){
-        cvtColor(meas.aux().pyr_[i].imgs_[0], filterState.img_[i], CV_GRAY2RGB);
+          //CUSTOMIZATION from rotio
+          //Check if image needs to be normalized for display purposes
+          double imgMin, imgMax;
+          cv::minMaxLoc(meas.aux().pyr_[i].imgs_[startLevel_], &imgMin, &imgMax); //Check on the highest allowed pyramid level to save time, Equaliztion applied on original image
+          cv::Mat tmpImg;
+          if (imgMax > 255.0)
+              meas.aux().pyr_[i].equalizeHistogram(0, tmpImg);
+          else
+              meas.aux().pyr_[i].imgs_[0].convertTo(tmpImg, CV_8UC1);
+          //Convert Image to color for drawing purposes
+          cvtColor(tmpImg, filterState.img_[i], CV_GRAY2RGB);
+          //CUSTOMIZATION
       }
     }
     filterState.imgTime_ = filterState.t_;
@@ -981,12 +992,25 @@ ImgOutlierDetection<typename FILTERSTATE::mtState>,false>{
       }
       for(int camID = 0;camID<mtState::nCam_;camID++){
         // Get Candidates
-        if(verbose_) std::cout << "Adding keypoints" << std::endl;
+//        if(verbose_) std::cout << "Adding keypoints" << std::endl;
         const double t1 = (double) cv::getTickCount();
         candidates_.clear();
-        for(int l=endLevel_;l<=startLevel_;l++){
-          meas.aux().pyr_[camID].detectFastCorners(candidates_,l,fastDetectionThreshold_, mpMultiCamera_->cameras_[camID].valid_radius_);
-        }
+          //CUSTOMIZATION from rotio
+          //Histogram Equalization should only applied be if image is in 16-bit range
+          bool applyHistogramEqualization = false;
+          double imgMin, imgMax;
+          cv::minMaxLoc(meas.aux().pyr_[camID].imgs_[startLevel_], &imgMin, &imgMax);
+          if (imgMax > 255.0)
+              applyHistogramEqualization = true;
+          if (verbose_)
+              std::cout << "Image Min/Max:" << imgMin << "/" << imgMax << "\t applyHistogramEqualization=" << applyHistogramEqualization << std::endl;
+
+          //Detect FAST corners, equalize image if 16-bit before application of OpenCV FAST detector
+          for (int l = endLevel_; l <= startLevel_; l++)
+          {
+              meas.aux().pyr_[camID].detectFastCorners(candidates_, l, fastDetectionThreshold_,std::numeric_limits<float>::max(), applyHistogramEqualization);
+          }
+          //CUSTOMIZATION
         const double t2 = (double) cv::getTickCount();
         if(verbose_) std::cout << "== Detected " << candidates_.size() << " on levels " << endLevel_ << "-" << startLevel_ << " (" << (t2-t1)/cv::getTickFrequency()*1000 << " ms)" << std::endl;
         std::unordered_set<unsigned int> newSet = filterState.fsm_.addBestCandidates(candidates_,meas.aux().pyr_[camID],camID,filterState.t_,

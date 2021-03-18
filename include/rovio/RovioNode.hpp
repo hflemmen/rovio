@@ -499,16 +499,39 @@ class RovioNode{
     // Get image from msg
     cv_bridge::CvImagePtr cv_ptr;
     try {
-      cv_ptr = cv_bridge::toCvCopy(img, sensor_msgs::image_encodings::TYPE_8UC1);
+
+        //CUTOMIZATION from rotio
+        //cv_ptr = cv_bridge::toCvCopy(img, sensor_msgs::image_encodings::TYPE_8UC1);
+        cv_ptr = cv_bridge::toCvCopy(img, img->encoding); //smk: input image encoding doesn't matter as it gets converted to float point later
+        //CUTOMIZATION
     } catch (cv_bridge::Exception& e) {
       ROS_ERROR("cv_bridge exception: %s", e.what());
       return;
     }
+    // CUSTOM from rotio
+    //CUSTOMIZATION
+    //Covert Color/Gray/16bit images to float
     cv::Mat cv_img;
-    cv_ptr->image.copyTo(cv_img);
+    //std::cout << "We got an image with encoding: " << cv_ptr->encoding << '\n';
+    if (cv_ptr->encoding == "bgr8"){
+        std::cout << "Converting from bgr.\n";
+      cv::cvtColor(cv_ptr->image, cv_img, CV_BGR2GRAY);
+      cv_img.convertTo(cv_img, CV_32FC1);
+    }
+    else if (cv_ptr->encoding == "rgb8"){
+        std::cout << "Converting from rgb.\n";
+      cv::cvtColor(cv_ptr->image, cv_img, CV_RGB2GRAY);
+      cv_img.convertTo(cv_img, CV_32FC1);
+    }
+    else {
+        cv_ptr->image.convertTo(cv_img,
+                                CV_32FC1); //smk: convert incoming image to floating point value, this can deal with single channel 8 and 16 bit images
+    }
+    //cv_ptr->image.copyTo(cv_img); // Original
+    // END CUSTOM
     if(init_state_.isInitialized() && !cv_img.empty()){
       double msgTime = img->header.stamp.toSec();
-      if(msgTime != imgUpdateMeas_.template get<mtImgMeas::_aux>().imgTime_){
+      if(abs(msgTime - imgUpdateMeas_.template get<mtImgMeas::_aux>().imgTime_) >0.1 ){ // EDITED: This was originally exact // TODO: Handle unsynchronized thermal and visual cameras.
         for(int i=0;i<mtState::nCam_;i++){
           if(imgUpdateMeas_.template get<mtImgMeas::_aux>().isValidPyr_[i]){
             std::cout << "    \033[31mFailed Synchronization of Camera Frames, t = " << msgTime << "\033[0m" << std::endl;
