@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?> 
+<launch>
+  <remap from="/cam0/image_raw" to="/rgb/image"/>
+  <remap from="/cam1/image_raw" to="/thermal/image_raw"/>
+  <remap from="/imu0" to="/imu/data"/>
+  <node pkg="rovio" type="rovio_node" name="rovio" output="screen">
+  <param name="filter_config" value="$(find rovio)/cfg/vivid/rovio_vivid.info"/>
+<!--    <param name="camera0_config" value="$(find rovio)/cfg/vivid/rgb.yaml"/>-->
+<!--  <param name="camera1_config" value="/home/henrik/datasets/ktio/Vicon/vicon_tau2_intrinsic_camera_calibration.yaml"/>-->
+<!--  <param name="camera0_config" value="$(find rovio)/cfg/charlie_tau2.yaml"/>-->
+<!--  <param name="camera0_config" value="$(find rovio)/cfg/charlie_tau2.yaml"/>-->
+  </node>
+</launch>

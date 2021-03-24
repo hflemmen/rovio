@@ -87,6 +87,7 @@ class ImgUpdateMeasAuxiliary: public LWF::AuxiliaryBase<ImgUpdateMeasAuxiliary<S
   ImagePyramid<STATE::nLevels_> pyr_[STATE::nCam_];
   bool isValidPyr_[STATE::nCam_];
   double imgTime_;
+  int activeModality_;
 };
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -411,31 +412,39 @@ ImgOutlierDetection<typename FILTERSTATE::mtState>,false>{
     transformFeatureOutputCT_.setOutputCameraID(activeCamID);
     transformFeatureOutputCT_.transformState(state,featureOutput_);
 
-    if(useDirectMethod_){
-      if(doFrameVisualisation_ && featureOutput_.c().com_c()){
-        if(activeCamID==camID){
-          featureOutput_.c().drawPoint(drawImg_, cv::Scalar(0,175,175));
+    // Custom: Add an check to only use the camera that received a new image frame this update.
+//    if(meas_.aux().isValidPyr_[activeCamID]) {
+    if(meas_.aux().activeModality_ == activeCamID){
+        if (useDirectMethod_) {
+            if (doFrameVisualisation_ && featureOutput_.c().com_c()) {
+                if (activeCamID == camID) {
+                    featureOutput_.c().drawPoint(drawImg_, cv::Scalar(0, 175, 175));
+                } else {
+                    featureOutput_.c().drawPoint(drawImg_, cv::Scalar(175, 175, 0));
+                }
+            }
+            if (alignment_.getLinearAlignEquationsReduced(meas_.aux().pyr_[activeCamID],
+                                                          *state.aux().mpCurrentFeature_->mpMultilevelPatch_,
+                                                          featureOutput_.c(), endLevel_, startLevel_, A_red_, b_red_)) {
+                y.template get<mtInnovation::_pix>() = b_red_ + noise.template get<mtNoise::_pix>();
+                if (verbose_) {
+                    std::cout << "    \033[32mMaking update with feature " << ID << " from camera " << camID
+                              << " in camera " << activeCamID << "\033[0m" << std::endl;
+                }
+            } else {
+                y.template get<mtInnovation::_pix>() = noise.template get<mtNoise::_pix>();
+                if (verbose_) {
+                    std::cout << "    \033[31mFailed Construction of Alignment Equations with feature " << ID
+                              << " from camera " << camID << " in camera " << activeCamID << "\033[0m" << std::endl;
+                }
+                cancelIteration_ = true;
+            }
         } else {
-          featureOutput_.c().drawPoint(drawImg_, cv::Scalar(175,175,0));
+            Eigen::Vector2d pixError;
+            pixError(0) = static_cast<double>(state.aux().feaCoorMeas_[ID].get_c().x - featureOutput_.c().get_c().x);
+            pixError(1) = static_cast<double>(state.aux().feaCoorMeas_[ID].get_c().y - featureOutput_.c().get_c().y);
+            y.template get<mtInnovation::_pix>() = pixError + noise.template get<mtNoise::_pix>();
         }
-      }
-      if(alignment_.getLinearAlignEquationsReduced(meas_.aux().pyr_[activeCamID],*state.aux().mpCurrentFeature_->mpMultilevelPatch_,featureOutput_.c(),endLevel_,startLevel_,A_red_,b_red_)){
-        y.template get<mtInnovation::_pix>() = b_red_ + noise.template get<mtNoise::_pix>();
-        if(verbose_){
-          std::cout << "    \033[32mMaking update with feature " << ID << " from camera " << camID << " in camera " << activeCamID << "\033[0m" << std::endl;
-        }
-      } else {
-        y.template get<mtInnovation::_pix>() = noise.template get<mtNoise::_pix>();
-        if(verbose_){
-          std::cout << "    \033[31mFailed Construction of Alignment Equations with feature " << ID << " from camera " << camID << " in camera " << activeCamID << "\033[0m" << std::endl;
-        }
-        cancelIteration_ = true;
-      }
-    } else {
-      Eigen::Vector2d pixError;
-      pixError(0) = static_cast<double>(state.aux().feaCoorMeas_[ID].get_c().x - featureOutput_.c().get_c().x);
-      pixError(1) = static_cast<double>(state.aux().feaCoorMeas_[ID].get_c().y - featureOutput_.c().get_c().y);
-      y.template get<mtInnovation::_pix>() = pixError+noise.template get<mtNoise::_pix>();
     }
   }
 
@@ -584,7 +593,13 @@ ImgOutlierDetection<typename FILTERSTATE::mtState>,false>{
    *   @todo sort feature by covariance and use more accurate ones first
    */
   void commonPreProcess(mtFilterState& filterState, const mtMeas& meas){
+    if(filterState.t_ != meas.aux().imgTime_) {
+      std::cerr.precision(17);
+      std::cerr <<  std::setprecision (15) << "The times are not consistent! Filterstate.t_: " << filterState.t_ << ", meas time: " << meas.aux().imgTime_ << ", activeModality: " << meas.aux().activeModality_ << '\n';
+      throw std::logic_error("Should not have messed with the timing.");
+    }
     assert(filterState.t_ == meas.aux().imgTime_);
+
     for(int i=0;i<mtState::nCam_;i++){
       if(doFrameVisualisation_){
           //CUSTOMIZATION from rotio
@@ -621,15 +636,19 @@ ImgOutlierDetection<typename FILTERSTATE::mtState>,false>{
       for(unsigned int i=0;i<mtState::nMax_;i++){
         if(filterState.fsm_.isValid_[i]){
           const int& camID = filterState.state_.CfP(i).camID_;   // Camera ID of the feature.
-          tempCoordinates_ = *filterState.fsm_.features_[i].mpCoordinates_;
-          tempCoordinates_.set_warp_identity();
-          if(mlpTemp1_.isMultilevelPatchInFrame(filterState.prevPyr_[camID],tempCoordinates_,startLevel_,true)){
-            mlpTemp1_.extractMultilevelPatchFromImage(filterState.prevPyr_[camID],tempCoordinates_,startLevel_,true);
-            mlpTemp1_.computeMultilevelShiTomasiScore(endLevel_,startLevel_);
-            mlpTemp2_.extractMultilevelPatchFromImage(meas.aux().pyr_[camID],tempCoordinates_,startLevel_,true);
-            const float avgError = mlpTemp1_.computeAverageDifference(mlpTemp2_,endLevel_,startLevel_);
-            if(avgError/std::sqrt(mlpTemp1_.e1_) > static_cast<float>(pixelCoordinateMotionTh_)) totCountInMotion++;
-            totCountInFrame++;
+          if(camID == meas.aux().activeModality_) { // Custom added check to only work on the image which is present
+            tempCoordinates_ = *filterState.fsm_.features_[i].mpCoordinates_;
+            tempCoordinates_.set_warp_identity();
+            if (mlpTemp1_.isMultilevelPatchInFrame(filterState.prevPyr_[camID], tempCoordinates_, startLevel_, true)) {
+              mlpTemp1_.extractMultilevelPatchFromImage(filterState.prevPyr_[camID], tempCoordinates_, startLevel_,
+                                                        true);
+              mlpTemp1_.computeMultilevelShiTomasiScore(endLevel_, startLevel_);
+              mlpTemp2_.extractMultilevelPatchFromImage(meas.aux().pyr_[camID], tempCoordinates_, startLevel_, true);
+              const float avgError = mlpTemp1_.computeAverageDifference(mlpTemp2_, endLevel_, startLevel_);
+              if (avgError / std::sqrt(mlpTemp1_.e1_) > static_cast<float>(pixelCoordinateMotionTh_))
+                totCountInMotion++;
+              totCountInFrame++;
+            }
           }
         }
       }
@@ -668,7 +687,7 @@ ImgOutlierDetection<typename FILTERSTATE::mtState>,false>{
     state.updateMultiCameraExtrinsics(mpMultiCamera_);
 
     while(ID < mtState::nMax_ && foundValidMeasurement == false){
-      if(filterState.fsm_.isValid_[ID]){
+      if(filterState.fsm_.isValid_[ID] ){
         // Data handling stuff
         FeatureManager<mtState::nLevels_,mtState::patchSize_,mtState::nCam_>& f = filterState.fsm_.features_[ID];
         const int camID = f.mpCoordinates_->camID_;
@@ -737,6 +756,10 @@ ImgOutlierDetection<typename FILTERSTATE::mtState>,false>{
             }
             foundValidMeasurement = true;
           } else {
+            if (meas.aux().isValidPyr_[activeCamID]){
+              std::cerr << "This pyramid is not valid.\n";
+//              throw std::logic_error("This pyramid is not valid.\n");
+            }
             if(alignment_.align2DAdaptive(alignedCoordinates_,meas.aux().pyr_[activeCamID],*f.mpMultilevelPatch_,featureOutput_.c(),startLevel_,endLevel_,
                                           alignConvergencePixelRange_,alignCoverageRatio_,alignMaxUniSample_)){
               if(verbose_) std::cout << "    Found match: " << alignedCoordinates_.get_nor().getVec().transpose() << std::endl;
@@ -991,6 +1014,11 @@ ImgOutlierDetection<typename FILTERSTATE::mtState>,false>{
         medianDepthParameters.fill(initDepth_);
       }
       for(int camID = 0;camID<mtState::nCam_;camID++){
+        // Custom: To avoid finding features in images which are not present
+        if(camID != meas.aux().activeModality_){
+          continue; // Don't find features in a modality which is not being updated
+        }
+        // End custom
         // Get Candidates
 //        if(verbose_) std::cout << "Adding keypoints" << std::endl;
         const double t1 = (double) cv::getTickCount();
@@ -1091,10 +1119,12 @@ ImgOutlierDetection<typename FILTERSTATE::mtState>,false>{
       }
     }
 
-    // Copy image pyramid to state
-    for(int i=0;i<mtState::nCam_;i++){
-      filterState.prevPyr_[i] = meas.aux().pyr_[i];
-    }
+    // Copy image pyramid to state Original:
+//    for(int i=0;i<mtState::nCam_;i++){
+//      filterState.prevPyr_[i] = meas.aux().pyr_[i];
+//    }
+// Custom: Only adds the active modality to the state.
+    filterState.prevPyr_[meas.aux().activeModality_] = meas.aux().pyr_[meas.aux().activeModality_];
 
     // Zero Velocity updates if appropriate
     if(isZeroVelocityUpdateEnabled_

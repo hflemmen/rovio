@@ -1,65 +1,33 @@
 ; You can partially override parameter set in this file by creating your own subset of parameter in a separate info-file and include it with:
 ; #include "/home/user/workspace/rovio/cfg/rovio_custom.info"
+; https://sites.google.com/view/dgbicra2019-vivid
 Common
 {
 	doVECalibration false;		Should the camera-IMU extrinsics be calibrated online
 	depthType 1;				Type of depth parametrization (0: normal, 1: inverse depth, 2: log, 3: hyperbolic)
-	verbose false;				Is the verbose active
+	verbose true;				Is the verbose active
 }
-Camera0
+Camera0; Extrinsics obtained from the self calibration of rovio(Commented out)
 {
-	CalibrationFile /home/henrik/c_ws/src/rovio/cfg/euroc_cam0.yaml;												Camera-Calibration file for intrinsics
-	qCM_x  0.00666398307551;										X-entry of IMU to Camera quaterion (Hamilton)
-	qCM_y  -0.0079168224269;										Y-entry of IMU to Camera quaterion (Hamilton)
-	qCM_z  -0.701985972528;											Z-entry of IMU to Camera quaterion (Hamilton)
-	qCM_w   0.712115587266;											W-entry of IMU to Camera quaterion (Hamilton)
-	MrMC_x -0.0111674199187;											X-entry of IMU to Camera vector (expressed in IMU CF) [m]
-	MrMC_y -0.0574640920022;										Y-entry of IMU to Camera vector (expressed in IMU CF) [m]
-	MrMC_z 0.0207586947896;											Z-entry of IMU to Camera vector (expressed in IMU CF) [m]
+	CalibrationFile /home/henrik/c_ws/src/rovio/cfg/vivid/rgb.yaml;												Camera-Calibration file for intrinsics
+	qCM_x  -0.4974232            ; -0.498096123501;										X-entry of IMU to Camera quaterion (Hamilton)
+	qCM_y   0.4984418            ; -0.494652356533;										Y-entry of IMU to Camera quaterion (Hamilton)
+	qCM_z   0.5066721            ;  0.508867194651;											Z-entry of IMU to Camera quaterion (Hamilton)
+	qCM_w   0.4974026            ;  0.498270484915;											W-entry of IMU to Camera quaterion (Hamilton)
+	MrMC_x  -0.03229554082192394 ; -0.0223234473515;											X-entry of IMU to Camera vector (expressed in IMU CF) [m]
+	MrMC_y  -0.026378657567605192; -0.0519627640865;										Y-entry of IMU to Camera vector (expressed in IMU CF) [m]
+	MrMC_z  -0.03263380818421379 ;  0.0402641245355;											Z-entry of IMU to Camera vector (expressed in IMU CF) [m]
 }
-;Camera0 ; Vicon room, JPL inverted from the original
-;{
-;	CalibrationFile ;												Camera-Calibration file for intrinsics
-;	qCM_x  -0.4971309;										X-entry of IMU to Camera quaterion (Hamilton)
-;	qCM_y  0.5043517;										Y-entry of IMU to Camera quaterion (Hamilton)
-;	qCM_z  -0.5045156;											Z-entry of IMU to Camera quaterion (Hamilton)
-;	qCM_w  -0.4939172;											W-entry of IMU to Camera quaterion (Hamilton)
-;	MrMC_x 0.0366305340938;											X-entry of IMU to Camera vector (expressed in IMU CF) [m]
-;	MrMC_y -0.00566387907285;										Y-entry of IMU to Camera vector (expressed in IMU CF) [m]
-;	MrMC_z -0.0379626780198;											Z-entry of IMU to Camera vector (expressed in IMU CF) [m]
-;}
-;Camera0 ; Parking lot
-;{
-;	CalibrationFile ; /home/henrik/datasets/ktio/Vicon/vicon_tau2_intrinsic_camera_calibration.yaml;												Camera-Calibration file for intrinsics
-;	qCM_x  0.5750902125664134;										X-entry of IMU to Camera quaterion (Hamilton)
-;	qCM_y  -0.5720034915900457;										Y-entry of IMU to Camera quaterion (Hamilton)
-;	qCM_z  0.41348512983068125;											Z-entry of IMU to Camera quaterion (Hamilton)
-;	qCM_w  0.41365843449435347;											W-entry of IMU to Camera quaterion (Hamilton)
-;	MrMC_x 0.132385017016;											X-entry of IMU to Camera vector (expressed in IMU CF) [m]
-;	MrMC_y 0.0231335126268;										Y-entry of IMU to Camera vector (expressed in IMU CF) [m]
-;	MrMC_z -0.0421824381085;											Z-entry of IMU to Camera vector (expressed in IMU CF) [m]
-;}
-;Camera0  ; Euroc
-;{
-;	CalibrationFile ;												Camera-Calibration file for intrinsics
-;	qCM_x  0.00666398307551;										X-entry of IMU to Camera quaterion (Hamilton)
-;	qCM_y  -0.0079168224269;										Y-entry of IMU to Camera quaterion (Hamilton)
-;	qCM_z  -0.701985972528;											Z-entry of IMU to Camera quaterion (Hamilton)
-;	qCM_w   0.712115587266;											W-entry of IMU to Camera quaterion (Hamilton)
-;	MrMC_x -0.0111674199187;											X-entry of IMU to Camera vector (expressed in IMU CF) [m]
-;	MrMC_y -0.0574640920022;										Y-entry of IMU to Camera vector (expressed in IMU CF) [m]
-;	MrMC_z 0.0207586947896;											Z-entry of IMU to Camera vector (expressed in IMU CF) [m]
-;}
 Camera1
 {
-	CalibrationFile /home/henrik/datasets/ktio/Vicon/vicon_tau2_intrinsic_camera_calibration.yaml;												Camera-Calibration file for intrinsics
-	qCM_x  0.4971309;										X-entry of IMU to Camera quaterion (Hamilton)
-	qCM_y  -0.5043517;										Y-entry of IMU to Camera quaterion (Hamilton)
-	qCM_z  0.5045156;											Z-entry of IMU to Camera quaterion (Hamilton)
-	qCM_w  -0.4939172;											W-entry of IMU to Camera quaterion (Hamilton)
-	MrMC_x 0.0366305340938;											X-entry of IMU to Camera vector (expressed in IMU CF) [m]
-	MrMC_y -0.00566387907285;										Y-entry of IMU to Camera vector (expressed in IMU CF) [m]
-	MrMC_z -0.0379626780198;											Z-entry of IMU to Camera vector (expressed in IMU CF) [m]
+	CalibrationFile /home/henrik/c_ws/src/rovio/cfg/vivid/thermal.yaml;												Camera-Calibration file for intrinsics
+	qCM_x    -0.4934373   ; 0.523377823046;										X-entry of IMU to Camera quaterion (Hamilton)
+	qCM_y     0.5024243   ; 0.468971878742;										Y-entry of IMU to Camera quaterion (Hamilton)
+	qCM_z     0.5091132   ; 0.483048759493;											Z-entry of IMU to Camera quaterion (Hamilton)
+	qCM_w     0.4948668   ; -0.522307311116;											W-entry of IMU to Camera quaterion (Hamilton)
+	MrMC_x   0.00165156   ; 0.0366305340938;											X-entry of IMU to Camera vector (expressed in IMU CF) [m]
+	MrMC_y   -0.01037533  ; -0.00566387907285;										Y-entry of IMU to Camera vector (expressed in IMU CF) [m]
+	MrMC_z   0.07519838   ; -0.0379626780198;											Z-entry of IMU to Camera vector (expressed in IMU CF) [m]
 }
 Init
 {
@@ -77,10 +45,10 @@ Init
         gyb_0 0;			X-entry of gyroscope bias [rad/s]
         gyb_1 0;			Y-entry of gyroscope bias [rad/s]
         gyb_2 0;			Z-entry of gyroscope bias [rad/s]
-        att_x 0;			X-entry of initial attitude (IMU to world, Hamilton)
-        att_y 0;			Y-entry of initial attitude (IMU to world, Hamilton)
+        att_x 0.7071068;			X-entry of initial attitude (IMU to world, Hamilton)
+        att_y 0.7071068;			Y-entry of initial attitude (IMU to world, Hamilton)
         att_z 0;			Z-entry of initial attitude (IMU to world, Hamilton)
-        att_w 1;			W-entry of initial attitude (IMU to world, Hamilton)
+        att_w 0;			W-entry of initial attitude (IMU to world, Hamilton)
     }
     Covariance
     {
