@@ -455,6 +455,8 @@ ImgOutlierDetection<typename FILTERSTATE::mtState>,false>{
       const int& ID = candidate.aux().activeFeature_;
       const int& camID = candidate.CfP(ID).camID_;
       const int activeCamID = (candidate.aux().activeCameraCounter_ + camID)%mtState::nCam_;
+//      std::cout << "In generateCandidates: ID: " << ID << ", camID: " << camID << ", activeCamID: " << activeCamID << '\n';
+      // TODO: Add a check here if the camera is the camera that is being updated now. Seems like camID and activeCamID always is the same.
       transformFeatureOutputCT_.setFeatureID(ID);
       transformFeatureOutputCT_.setOutputCameraID(activeCamID);
       transformFeatureOutputCT_.transformState(candidate,featureOutput_);
@@ -600,7 +602,8 @@ ImgOutlierDetection<typename FILTERSTATE::mtState>,false>{
     }
     assert(filterState.t_ == meas.aux().imgTime_);
 
-    for(int i=0;i<mtState::nCam_;i++){
+//    for(int i=0;i<mtState::nCam_;i++){ // Original
+      int i = meas.aux().activeModality_; // Custom Only update current image
       if(doFrameVisualisation_){
           //CUSTOMIZATION from rotio
           //Check if image needs to be normalized for display purposes
@@ -615,7 +618,7 @@ ImgOutlierDetection<typename FILTERSTATE::mtState>,false>{
           cvtColor(tmpImg, filterState.img_[i], CV_GRAY2RGB);
           //CUSTOMIZATION
       }
-    }
+//    } // Original
     filterState.imgTime_ = filterState.t_;
     filterState.imageCounter_++;
     if(visualizePatches_){
@@ -692,23 +695,36 @@ ImgOutlierDetection<typename FILTERSTATE::mtState>,false>{
         FeatureManager<mtState::nLevels_,mtState::patchSize_,mtState::nCam_>& f = filterState.fsm_.features_[ID];
         const int camID = f.mpCoordinates_->camID_;
         const int activeCamID = (activeCamCounter + camID)%mtState::nCam_;
-        drawImg_ = filterState.img_[activeCamID];
-        if(activeCamCounter==0){
-          f.mpStatistics_->increaseStatistics(filterState.t_);
-          if(verbose_){
-            std::cout << "=========== Feature " << f.idx_ << " ==================================================== " << std::endl;
+        if (camID != activeCamID) std::cout << "camIds are not equal: camID: " << camID << "activeCamID: " << activeCamID << ", activeCamCounter: " << activeCamCounter << '\n';
+//
+//        const int activeCamID = meas.aux().activeModality_;
+//        const int camID = meas.aux().activeModality_;
+
+        if(camID == meas.aux().activeModality_) {   // Custom does not find patches in frames which are not updated
+
+          drawImg_ = filterState.img_[activeCamID];
+          if (activeCamCounter == 0) {
+            f.mpStatistics_->increaseStatistics(filterState.t_);
+            if (verbose_) {
+              std::cout << "=========== Feature " << f.idx_ << " ==================================================== "
+                        << std::endl;
+            }
+            // Visualize patch tracking
+            if (visualizePatches_) {
+              f.mpMultilevelPatch_->drawMultilevelPatch(filterState.patchDrawing_,
+                                                        cv::Point2i(2, filterState.drawPB_ + ID * filterState.drawPS_),
+                                                        1, false);
+              cv::putText(filterState.patchDrawing_, std::to_string(f.idx_),
+                          cv::Point2i(2, 10 + ID * filterState.drawPS_), cv::FONT_HERSHEY_SIMPLEX, 0.4,
+                          cv::Scalar(255, 255, 255));
+            }
+            f.log_prediction_ = *f.mpCoordinates_;
           }
-          // Visualize patch tracking
-          if(visualizePatches_){
-            f.mpMultilevelPatch_->drawMultilevelPatch(filterState.patchDrawing_,cv::Point2i(2,filterState.drawPB_+ID*filterState.drawPS_),1,false);
-            cv::putText(filterState.patchDrawing_,std::to_string(f.idx_),cv::Point2i(2,10+ID*filterState.drawPS_),cv::FONT_HERSHEY_SIMPLEX, 0.4, cv::Scalar(255,255,255));
+          if (verbose_) {
+            std::cout << "  ========== Camera  " << activeCamID << " ================= " << std::endl;
+            std::cout << "  Normal in feature frame: " << f.mpCoordinates_->get_nor().getVec().transpose() << std::endl;
+            std::cout << "  with depth: " << f.mpDistance_->getDistance() << std::endl;
           }
-          f.log_prediction_ = *f.mpCoordinates_;
-        }
-        if(verbose_){
-          std::cout << "  ========== Camera  " << activeCamID << " ================= " << std::endl;
-          std::cout << "  Normal in feature frame: " << f.mpCoordinates_->get_nor().getVec().transpose() << std::endl;
-          std::cout << "  with depth: " << f.mpDistance_->getDistance() << std::endl;
         }
 
         // Get coordinates in target frame
@@ -718,72 +734,80 @@ ImgOutlierDetection<typename FILTERSTATE::mtState>,false>{
         transformFeatureOutputCT_.transformCovMat(state,cov,featureOutputCov_);
         if(verbose_) std::cout << "    Normal in camera frame: " << featureOutput_.c().get_nor().getVec().transpose() << std::endl;
 
-        // Check if feature in target frame
-        if(!mlpTemp1_.isMultilevelPatchInFrame(filterState.prevPyr_[camID],featureOutput_.c(),startLevel_,false)){
-          f.mpStatistics_->status_[activeCamID] = NOT_IN_FRAME;
-          if(verbose_) std::cout << "    NOT in frame" << std::endl;
-        } else {
-          pixelOutputCT_.transformState(featureOutput_,pixelOutput_);
-          pixelOutputCT_.transformCovMat(featureOutput_,featureOutputCov_,pixelOutputCov_);
-          featureOutput_.c().setPixelCov(pixelOutputCov_);
+        if(camID == meas.aux().activeModality_) {   // Custom does not find patches in frames which are not updated
 
-          // Visualization
-          if(doFrameVisualisation_){
-            if(activeCamID==camID){
-              featureOutput_.c().drawEllipse(drawImg_, cv::Scalar(0,175,175), 2.0, true);
-              featureOutput_.c().drawText(drawImg_,std::to_string(f.idx_),cv::Scalar(0,175,175));
-            } else {
-              featureOutput_.c().drawEllipse(drawImg_, cv::Scalar(175,175,0), 2.0, true);
-              featureOutput_.c().drawText(drawImg_,std::to_string(f.idx_),cv::Scalar(175,175,0));
-            }
-          }
-          if(visualizePatches_){
-            if(mlpTemp1_.isMultilevelPatchInFrame(meas.aux().pyr_[activeCamID],featureOutput_.c(),startLevel_,false)){
-              mlpTemp1_.extractMultilevelPatchFromImage(meas.aux().pyr_[activeCamID],featureOutput_.c(),startLevel_,false);
-              mlpTemp1_.drawMultilevelPatch(filterState.patchDrawing_,cv::Point2i(filterState.drawPB_+(1+2*activeCamID)*filterState.drawPS_,filterState.drawPB_+ID*filterState.drawPS_),1,false);
-            }
-          }
-
-          if(useDirectMethod_){
-            if(verbose_) std::cout << "    Do direct update (without alignment)" << std::endl;
-            state.aux().mpCurrentFeature_ = &filterState.fsm_.features_[ID];
-            if(activeCamCounter==0){
-              updnoiP_.setIdentity();
-              updnoiP_ = updnoiP_*updateNoiseInt_;
-            } else {
-              updnoiP_.setIdentity();
-              updnoiP_ = updnoiP_*updateNoiseInt_*noiseGainForOffCamera_;
-            }
-            foundValidMeasurement = true;
+          // Check if feature in target frame
+          if (!mlpTemp1_.isMultilevelPatchInFrame(filterState.prevPyr_[camID], featureOutput_.c(), startLevel_,
+                                                  false)) {
+            f.mpStatistics_->status_[activeCamID] = NOT_IN_FRAME;
+            if (verbose_) std::cout << "    NOT in frame" << std::endl;
           } else {
-            if (meas.aux().isValidPyr_[activeCamID]){
-              std::cerr << "This pyramid is not valid.\n";
-//              throw std::logic_error("This pyramid is not valid.\n");
+            pixelOutputCT_.transformState(featureOutput_, pixelOutput_);
+            pixelOutputCT_.transformCovMat(featureOutput_, featureOutputCov_, pixelOutputCov_);
+            featureOutput_.c().setPixelCov(pixelOutputCov_);
+
+            // Visualization
+            if (doFrameVisualisation_) {
+              if (activeCamID == camID) {
+                featureOutput_.c().drawEllipse(drawImg_, cv::Scalar(0, 175, 175), 2.0, true);
+                featureOutput_.c().drawText(drawImg_, std::to_string(f.idx_), cv::Scalar(0, 175, 175));
+              } else {
+                featureOutput_.c().drawEllipse(drawImg_, cv::Scalar(175, 175, 0), 2.0, true);
+                featureOutput_.c().drawText(drawImg_, std::to_string(f.idx_), cv::Scalar(175, 175, 0));
+              }
             }
-            if(alignment_.align2DAdaptive(alignedCoordinates_,meas.aux().pyr_[activeCamID],*f.mpMultilevelPatch_,featureOutput_.c(),startLevel_,endLevel_,
-                                          alignConvergencePixelRange_,alignCoverageRatio_,alignMaxUniSample_)){
-              if(verbose_) std::cout << "    Found match: " << alignedCoordinates_.get_nor().getVec().transpose() << std::endl;
-              if(mlpTemp1_.isMultilevelPatchInFrame(meas.aux().pyr_[activeCamID],alignedCoordinates_,startLevel_,false)){
-                float avgError = 0.0;
-                if(patchRejectionTh_ >= 0){
-                  mlpTemp1_.extractMultilevelPatchFromImage(meas.aux().pyr_[activeCamID],alignedCoordinates_,startLevel_,false);
-                  avgError = mlpTemp1_.computeAverageDifference(*f.mpMultilevelPatch_,endLevel_,startLevel_);
-                }
-                if(patchRejectionTh_ >= 0 && avgError > patchRejectionTh_){
-                  f.mpStatistics_->status_[activeCamID] = FAILED_ALIGNEMENT;
-                  if(verbose_) std::cout << "    \033[31mREJECTED (error too large)\033[0m" << std::endl;
+            if (visualizePatches_) {
+              if (mlpTemp1_.isMultilevelPatchInFrame(meas.aux().pyr_[activeCamID], featureOutput_.c(), startLevel_,
+                                                     false)) {
+                mlpTemp1_.extractMultilevelPatchFromImage(meas.aux().pyr_[activeCamID], featureOutput_.c(), startLevel_,
+                                                          false);
+                mlpTemp1_.drawMultilevelPatch(filterState.patchDrawing_, cv::Point2i(
+                        filterState.drawPB_ + (1 + 2 * activeCamID) * filterState.drawPS_,
+                        filterState.drawPB_ + ID * filterState.drawPS_), 1, false);
+              }
+            }
+            if (useDirectMethod_) {
+              if (verbose_) std::cout << "    Do direct update (without alignment)" << std::endl;
+              state.aux().mpCurrentFeature_ = &filterState.fsm_.features_[ID];
+              if (activeCamCounter == 0) {
+                updnoiP_.setIdentity();
+                updnoiP_ = updnoiP_ * updateNoiseInt_;
+              } else {
+                updnoiP_.setIdentity();
+                updnoiP_ = updnoiP_ * updateNoiseInt_ * noiseGainForOffCamera_;
+              }
+              foundValidMeasurement = true;
+            } else {
+              std::cout << "We should not end here. useDirectMethod: " << useDirectMethod_ << '\n';
+              if (alignment_.align2DAdaptive(alignedCoordinates_, meas.aux().pyr_[activeCamID], *f.mpMultilevelPatch_,
+                                             featureOutput_.c(), startLevel_, endLevel_,
+                                             alignConvergencePixelRange_, alignCoverageRatio_, alignMaxUniSample_)) {
+                if (verbose_)
+                  std::cout << "    Found match: " << alignedCoordinates_.get_nor().getVec().transpose() << std::endl;
+                if (mlpTemp1_.isMultilevelPatchInFrame(meas.aux().pyr_[activeCamID], alignedCoordinates_, startLevel_,
+                                                       false)) {
+                  float avgError = 0.0;
+                  if (patchRejectionTh_ >= 0) {
+                    mlpTemp1_.extractMultilevelPatchFromImage(meas.aux().pyr_[activeCamID], alignedCoordinates_,
+                                                              startLevel_, false);
+                    avgError = mlpTemp1_.computeAverageDifference(*f.mpMultilevelPatch_, endLevel_, startLevel_);
+                  }
+                  if (patchRejectionTh_ >= 0 && avgError > patchRejectionTh_) {
+                    f.mpStatistics_->status_[activeCamID] = FAILED_ALIGNEMENT;
+                    if (verbose_) std::cout << "    \033[31mREJECTED (error too large)\033[0m" << std::endl;
+                  } else {
+                    if (doFrameVisualisation_) alignedCoordinates_.drawPoint(drawImg_, cv::Scalar(255, 0, 255));
+                    state.aux().feaCoorMeas_[ID] = alignedCoordinates_;
+                    foundValidMeasurement = true;
+                  }
                 } else {
-                  if(doFrameVisualisation_) alignedCoordinates_.drawPoint(drawImg_, cv::Scalar(255,0,255));
-                  state.aux().feaCoorMeas_[ID] = alignedCoordinates_;
-                  foundValidMeasurement = true;
+                  f.mpStatistics_->status_[activeCamID] = FAILED_ALIGNEMENT;
+                  if (verbose_) std::cout << "    \033[31mNot in frame after alignment\033[0m" << std::endl;
                 }
               } else {
                 f.mpStatistics_->status_[activeCamID] = FAILED_ALIGNEMENT;
-                if(verbose_) std::cout << "    \033[31mNot in frame after alignment\033[0m" << std::endl;
+                if (verbose_) std::cout << "    \033[31mNOT FOUND (matching failed)\033[0m" << std::endl;
               }
-            } else {
-              f.mpStatistics_->status_[activeCamID] = FAILED_ALIGNEMENT;
-              if(verbose_) std::cout << "    \033[31mNOT FOUND (matching failed)\033[0m" << std::endl;
             }
           }
         }
@@ -936,6 +960,9 @@ ImgOutlierDetection<typename FILTERSTATE::mtState>,false>{
       if(filterState.fsm_.isValid_[i]){
         FeatureManager<mtState::nLevels_,mtState::patchSize_,mtState::nCam_>& f = filterState.fsm_.features_[i];
         const int camID = f.mpCoordinates_->camID_;
+        if (camID != meas.aux().activeModality_){ // Custom: does not try to check features which was not updated
+          continue;
+        }
         if(f.mpStatistics_->trackedInSomeFrame()){
           countTracked++;
         }
@@ -974,11 +1001,18 @@ ImgOutlierDetection<typename FILTERSTATE::mtState>,false>{
     if(verbose_) std::cout << "Removing features: ";
     for(unsigned int i=0;i<mtState::nMax_;i++){
       if(filterState.fsm_.isValid_[i]){
+        // Custom: Check if the feature is in the currently updated image:
         FeatureManager<mtState::nLevels_,mtState::patchSize_,mtState::nCam_>& f = filterState.fsm_.features_[i];
+        const int camID = f.mpCoordinates_->camID_;
+        if (camID != meas.aux().activeModality_){ // Custom: does not try to check features which was not updated
+          continue;
+        }
+        // End custom
         if(!f.mpStatistics_->isGoodFeature(trackingUpperBound_,trackingLowerBound_)){
           if(verbose_) std::cout << filterState.fsm_.features_[i].idx_ << ", ";
           filterState.fsm_.isValid_[i] = false;
           filterState.resetFeatureCovariance(i,Eigen::Matrix3d::Identity());
+          std::cout << "Removes feature " << i << " beacause of poor quality. camID: " << camID << ", activeModlaity: " << meas.aux().activeModality_ << '\n';
         }
       }
     }
@@ -987,19 +1021,37 @@ ImgOutlierDetection<typename FILTERSTATE::mtState>,false>{
     int requiredFreeFeature = mtState::nMax_*minTrackedAndFreeFeatures_-countTracked;
     double factor = removalFactor_;
     int featureIndex = 0;
+    int fullIterations = 0;
+    int maxIterations = 3;
     while((int)(mtState::nMax_) - (int)(filterState.fsm_.getValidCount()) < requiredFreeFeature){
+      // Custom: To escape this loop when all the features is in the other modality we exit after a number of atempts
+      if(fullIterations >maxIterations){
+        std::cout << "We could not force remove enough features, giving up.";
+        break;
+      }
+      // End custom
       if(filterState.fsm_.isValid_[featureIndex]){
         FeatureManager<mtState::nLevels_,mtState::patchSize_,mtState::nCam_>& f = filterState.fsm_.features_[featureIndex];
-        if(!f.mpStatistics_->trackedInSomeFrame() && !f.mpStatistics_->isGoodFeature(trackingUpperBound_*factor,trackingLowerBound_*factor)){
-          if(verbose_) std::cout << filterState.fsm_.features_[featureIndex].idx_ << ", ";
-          filterState.fsm_.isValid_[featureIndex] = false;
-          filterState.resetFeatureCovariance(featureIndex,Eigen::Matrix3d::Identity());
+        const int camID = f.mpCoordinates_->camID_;
+        if (camID == meas.aux().activeModality_) { // Custom: does not try to check features which was not updated
+
+          if (!f.mpStatistics_->trackedInSomeFrame() &&
+              !f.mpStatistics_->isGoodFeature(trackingUpperBound_ * factor, trackingLowerBound_ * factor)) {
+            if (verbose_) std::cout << filterState.fsm_.features_[featureIndex].idx_ << ", ";
+            filterState.fsm_.isValid_[featureIndex] = false;
+            filterState.resetFeatureCovariance(featureIndex, Eigen::Matrix3d::Identity());
+            std::cout << "Removes feature " << featureIndex << " with sheer force. camID: " << camID << ", activeModlaity: " << meas.aux().activeModality_ << '\n';
+          }
+        } else{
+//          std::cout << "Does not try to force remove this feature since it is in a different camera. camID: " << camID
+//                    << ", activeModality_: " << meas.aux().activeModality_ << ", featureIndex: " << featureIndex << ", factor: " << factor << '\n';
         }
       }
       featureIndex++;
       if(featureIndex == mtState::nMax_){
         featureIndex = 0;
         factor = factor*removalFactor_;
+        fullIterations++; // Custom
       }
     }
     if(verbose_) std::cout << std::endl;
@@ -1041,9 +1093,21 @@ ImgOutlierDetection<typename FILTERSTATE::mtState>,false>{
           //CUSTOMIZATION
         const double t2 = (double) cv::getTickCount();
         if(verbose_) std::cout << "== Detected " << candidates_.size() << " on levels " << endLevel_ << "-" << startLevel_ << " (" << (t2-t1)/cv::getTickFrequency()*1000 << " ms)" << std::endl;
-        std::unordered_set<unsigned int> newSet = filterState.fsm_.addBestCandidates(candidates_,meas.aux().pyr_[camID],camID,filterState.t_,
-                                                                    endLevel_,startLevel_,(mtState::nMax_-filterState.fsm_.getValidCount())/(mtState::nCam_-camID),nDetectionBuckets_, scoreDetectionExponent_,
-                                                                    penaltyDistance_, zeroDistancePenalty_,false,minAbsoluteSTScore_);
+        // Custom
+//        const int maxAddedFeatuers = (mtState::nMax_ - filterState.fsm_.getValidCount()) / (mtState::nCam_ - camID); // Original
+        int featuresInActiveCam = 0;
+        for (int i = 0;i<mtState::nMax_;++i){
+          FeatureManager<mtState::nLevels_,mtState::patchSize_,mtState::nCam_>& f = filterState.fsm_.features_[i];
+          if(camID == f.mpCoordinates_->camID_){
+            featuresInActiveCam++;
+          }
+        }
+        const int maxAddedFeatuers = std::min((mtState::nMax_ - filterState.fsm_.getValidCount()) / (mtState::nCam_ - camID), (int)((mtState::nMax_ * 0.6) ) -featuresInActiveCam ); // Custom to avoid having too many features in one modality
+        // End custom
+        std::unordered_set<unsigned int> newSet = filterState.fsm_.addBestCandidates(candidates_, meas.aux().pyr_[camID], camID, filterState.t_,
+                                                                                     endLevel_, startLevel_,
+                                                                                     maxAddedFeatuers, nDetectionBuckets_, scoreDetectionExponent_,
+                                                                                     penaltyDistance_, zeroDistancePenalty_, false, minAbsoluteSTScore_);
         const double t3 = (double) cv::getTickCount();
         if(verbose_) std::cout << "== Got " << filterState.fsm_.getValidCount() << " after adding " << newSet.size() << " features in camera " << camID << " (" << (t3-t2)/cv::getTickFrequency()*1000 << " ms)" << std::endl;
         for(auto it = newSet.begin();it != newSet.end();++it){
