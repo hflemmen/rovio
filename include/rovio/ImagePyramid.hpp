@@ -97,10 +97,12 @@ class ImagePyramid{
   }
 
   /** \brief Copies the image pyramid.
+   * @Note This only does a shallow copy of the images.
    */
   ImagePyramid<n_levels>& operator=(const ImagePyramid<n_levels> &rhs) {
     for(unsigned int i=0;i<n_levels;i++){
-      rhs.imgs_[i].copyTo(imgs_[i]);
+//      rhs.imgs_[i].copyTo(imgs_[i]); // Original
+      imgs_[i] = rhs.imgs_[i]; // Custom to improve runtime
       centers_[i] = rhs.centers_[i];
     }
     return *this;
@@ -188,10 +190,12 @@ class ImagePyramid{
         int histSize = intensityMax - intensityMin + 1;
         float range[] = {intensityMin, intensityMax};
         const float *histRange = {range};
+        cv::Mat inImg;
+        imgs_[lvl].copyTo(inImg); // Custom rovtio Deep copy after normal copy constructor is made shallow.
 
         //Create histogram
         cv::Mat histogram;
-        cv::calcHist(&imgs_[lvl], 1, 0, cv::noArray(), histogram, 1, &histSize, &histRange, true, false);
+        cv::calcHist(&inImg, 1, 0, cv::noArray(), histogram, 1, &histSize, &histRange, true, false);
 
         //Find clipping range w.r.t minimmum and maximum intensity values (CDF) with atleast N=10000 pixels in bin
         int cummulativePixels = 10000 * std::pow(0.5, lvl);
@@ -210,7 +214,7 @@ class ImagePyramid{
         //reference: http://answers.opencv.org/question/75510/how-to-make-auto-adjustmentsbrightness-and-contrast-for-image-android-opencv-image-correction/?answer=75797#post-id-75797
         double alpha = 255.0 / (max_val - min_val);
         double beta = -1.0 * min_val * alpha;
-        imgs_[lvl].convertTo(outImg, CV_8UC1, alpha, beta);
+        inImg.convertTo(outImg, CV_8UC1, alpha, beta);
     }
     //CUSTOMIZATION
 };

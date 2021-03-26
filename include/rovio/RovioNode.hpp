@@ -84,6 +84,7 @@ class RovioNode{
   typedef typename mtVelocityUpdate::mtMeas mtVelocityMeas;
   mtVelocityMeas velocityUpdateMeas_;
   std::map<int, std::queue<std::pair<cv::Mat, double>>> lastTimeReceived; // Custom last received updates from both modalities // TODO: Make its own class for this
+  int lastSeq[mtState::nCam_]; // Custom keep track of sequence numbers to detect droped frames
 
   struct FilterInitializationState {
     FilterInitializationState()
@@ -206,12 +207,15 @@ class RovioNode{
     gotFirstMessages_ = false;
 
     // Subscribe topics
+    subImu_ = nh_.subscribe("imu/data", 1000, &RovioNode::imuCallback,this);
 //    subImu_ = nh_.subscribe("/imu0", 1000, &RovioNode::imuCallback,this);
-    subImu_ = nh_.subscribe("/vn100/imu", 1000, &RovioNode::imuCallback,this);
+//    subImu_ = nh_.subscribe("/vn100/imu", 1000, &RovioNode::imuCallback,this);
+    subImg0_ = nh_.subscribe("/rgb/image", 1000, &RovioNode::imgCallback0,this);
 //    subImg0_ = nh_.subscribe("/cam0/image_raw", 1000, &RovioNode::imgCallback0,this);
-    subImg0_ = nh_.subscribe("/cam0/cam0", 1000, &RovioNode::imgCallback0,this);
+//    subImg0_ = nh_.subscribe("/cam0/cam0", 1000, &RovioNode::imgCallback0,this);
+    subImg1_ = nh_.subscribe("/thermal/image_raw", 1000, &RovioNode::imgCallback1,this);
 //    subImg1_ = nh_.subscribe("/cam1/image_raw", 1000, &RovioNode::imgCallback1,this);
-    subImg1_ = nh_.subscribe("/tau_nodelet/thermal_image", 1000, &RovioNode::imgCallback1,this);
+//    subImg1_ = nh_.subscribe("/tau_nodelet/thermal_image", 1000, &RovioNode::imgCallback1,this);
     subGroundtruth_ = nh_.subscribe("pose", 1000, &RovioNode::groundtruthCallback,this);
     subGroundtruthOdometry_ = nh_.subscribe("odometry", 1000, &RovioNode::groundtruthOdometryCallback, this);
     subVelocity_ = nh_.subscribe("abss/twist", 1000, &RovioNode::velocityCallback,this);
@@ -336,6 +340,7 @@ class RovioNode{
     // Custom: Initialize the queue for mew updates
     for (int i =0;i<mtState::nCam_;++i){
       lastTimeReceived[i] = std::queue<std::pair<cv::Mat,double>>();
+      lastSeq[i] = -1;
     }
     // End Custom
   }
@@ -508,6 +513,14 @@ class RovioNode{
    */
   void imgCallback0(const sensor_msgs::ImageConstPtr & img){
     std::lock_guard<std::mutex> lock(m_filter_);
+    if(lastSeq[0] == -1){
+      lastSeq[0]=img->header.seq;
+    }else{
+      if(img->header.seq != ++lastSeq[0]){
+        std::cout << "Droping frames. Camera: 0, lastSeq: " << lastSeq[0] << ", seq: " << img->header.seq << '\n';
+        throw std::ios_base::failure("Dropping frames for some reason.\n");
+      }
+    }
     imgCallback(img,0);
   }
 
@@ -518,6 +531,14 @@ class RovioNode{
    */
   void imgCallback1(const sensor_msgs::ImageConstPtr & img) {
     std::lock_guard<std::mutex> lock(m_filter_);
+    if(lastSeq[1] == -1){
+      lastSeq[1]=img->header.seq;
+    }else{
+      if(img->header.seq != ++lastSeq[1]){
+        std::cout << "Droping frames. Camera: 1, lastSeq: " << lastSeq[1] << ", seq: " << img->header.seq << '\n';
+        throw std::ios_base::failure("Dropping frames for some reason.\n");
+      }
+    }
     if(mtState::nCam_ > 1) imgCallback(img,1);
   }
 
@@ -738,12 +759,12 @@ class RovioNode{
         for(int i=0;i<mtState::nCam_;i++){
           if(!mpFilter_->safe_.img_[i].empty() && mpImgUpdate_->doFrameVisualisation_){
             cv::imshow("Tracker" + std::to_string(i), mpFilter_->safe_.img_[i]);
-            cv::waitKey(3);
+            cv::waitKey(1); // Custom changed to 1 from 3
           }
         }
         if(!mpFilter_->safe_.patchDrawing_.empty() && mpImgUpdate_->visualizePatches_){
           cv::imshow("Patches", mpFilter_->safe_.patchDrawing_);
-          cv::waitKey(3);
+          cv::waitKey(1); // Custom changed to 1 from 3
         }
 
         // Obtain the save filter state.
