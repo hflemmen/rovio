@@ -1102,7 +1102,7 @@ ImgOutlierDetection<typename FILTERSTATE::mtState>,false>{
             featuresInActiveCam++;
           }
         }
-        const int maxAddedFeatuers = std::min((mtState::nMax_ - filterState.fsm_.getValidCount()) / (mtState::nCam_ - camID), (int)((mtState::nMax_ * 0.6) ) -featuresInActiveCam ); // Custom to avoid having too many features in one modality
+        const int maxAddedFeatuers = std::min((mtState::nMax_ - filterState.fsm_.getValidCount()) / (mtState::nCam_ - camID), (int)((mtState::nMax_ * 0.7) ) -featuresInActiveCam ); // Custom to avoid having too many features in one modality
         // End custom
         std::unordered_set<unsigned int> newSet = filterState.fsm_.addBestCandidates(candidates_, meas.aux().pyr_[camID], camID, filterState.t_,
                                                                                      endLevel_, startLevel_,
