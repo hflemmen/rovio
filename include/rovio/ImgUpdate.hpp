@@ -413,7 +413,6 @@ ImgOutlierDetection<typename FILTERSTATE::mtState>,false>{
     transformFeatureOutputCT_.transformState(state,featureOutput_);
 
     // Custom: Add an check to only use the camera that received a new image frame this update.
-//    if(meas_.aux().isValidPyr_[activeCamID]) {
     if(meas_.aux().activeModality_ == activeCamID){
         if (useDirectMethod_) {
             if (doFrameVisualisation_ && featureOutput_.c().com_c()) {
@@ -778,7 +777,7 @@ ImgOutlierDetection<typename FILTERSTATE::mtState>,false>{
               }
               foundValidMeasurement = true;
             } else {
-              std::cout << "We should not end here. useDirectMethod: " << useDirectMethod_ << '\n';
+              std::cout << "We should not end up here. useDirectMethod: " << useDirectMethod_ << '\n';
               if (alignment_.align2DAdaptive(alignedCoordinates_, meas.aux().pyr_[activeCamID], *f.mpMultilevelPatch_,
                                              featureOutput_.c(), startLevel_, endLevel_,
                                              alignConvergencePixelRange_, alignCoverageRatio_, alignMaxUniSample_)) {
