@@ -207,15 +207,25 @@ class RovioNode{
     gotFirstMessages_ = false;
 
     // Subscribe topics
-//    subImu_ = nh_.subscribe("imu/data", 1000, &RovioNode::imuCallback,this);
-    subImu_ = nh_.subscribe("/imu0", 1000, &RovioNode::imuCallback,this);
-//    subImu_ = nh_.subscribe("/vn100/imu", 1000, &RovioNode::imuCallback,this);
-//    subImg0_ = nh_.subscribe("/rgb/image", 1000, &RovioNode::imgCallback0,this);
-    subImg0_ = nh_.subscribe("/cam0/image_raw", 1000, &RovioNode::imgCallback0,this);
-//    subImg0_ = nh_.subscribe("/cam0/cam0", 1000, &RovioNode::imgCallback0,this);
-//    subImg1_ = nh_.subscribe("/thermal/image_raw", 1000, &RovioNode::imgCallback1,this);
-    subImg1_ = nh_.subscribe("/cam1/image_raw", 1000, &RovioNode::imgCallback1,this);
-//    subImg1_ = nh_.subscribe("/tau_nodelet/thermal_image", 1000, &RovioNode::imgCallback1,this);
+    int dataset = 1;
+    switch (dataset) {
+      default: // Default to euroc
+      case 0: // Euroc
+        subImu_ = nh_.subscribe("/imu0", 1000, &RovioNode::imuCallback,this);
+        subImg0_ = nh_.subscribe("/cam0/image_raw", 1000, &RovioNode::imgCallback0,this);
+        subImg1_ = nh_.subscribe("/cam1/image_raw", 1000, &RovioNode::imgCallback1,this);
+        break;
+      case 1: // m100
+        subImu_ = nh_.subscribe("/vn100/imu", 1000, &RovioNode::imuCallback,this);
+        subImg0_ = nh_.subscribe("/cam0/cam0", 1000, &RovioNode::imgCallback0,this);
+        subImg1_ = nh_.subscribe("/tau_nodelet/thermal_image", 1000, &RovioNode::imgCallback1,this);
+        break;
+      case 2:
+        subImu_ = nh_.subscribe("imu/data", 1000, &RovioNode::imuCallback,this);
+        subImg0_ = nh_.subscribe("/rgb/image", 1000, &RovioNode::imgCallback0,this);
+        subImg1_ = nh_.subscribe("/thermal/image_raw", 1000, &RovioNode::imgCallback1,this);
+        break;
+    }
     subGroundtruth_ = nh_.subscribe("pose", 1000, &RovioNode::groundtruthCallback,this);
     subGroundtruthOdometry_ = nh_.subscribe("odometry", 1000, &RovioNode::groundtruthOdometryCallback, this);
     subVelocity_ = nh_.subscribe("abss/twist", 1000, &RovioNode::velocityCallback,this);
