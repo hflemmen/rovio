@@ -120,6 +120,7 @@ class ImuPrediction: public LWF::Prediction<FILTERSTATE>{
             + oldC_.get_nor().getN()*noise.template get<mtNoise::_fea>(i).template block<2,1>(0,0)*sqrt(dt);
         QPD qm = qm.exponentialMap(dm);
         output.CfP(i).set_nor(oldC_.get_nor().rotated(qm));
+//        std::cout << "Norm for cam " << camID << ":\n" << oldC_.get_nor().rotated(qm).getVec() << ", diff:\n" << oldC_.get_nor().rotated(qm).getVec() - oldC_.get_nor().getVec() << '\n';
         // WARP corners
         if(state.CfP(i).trackWarping_){
           bearingVectorJac_ = output.CfP(i).get_nor().getM().transpose()*(dt*gSM(qm.rotate(oldC_.get_nor().getVec()))*Lmat(dm)*(

@@ -85,6 +85,7 @@ class RovioNode{
   mtVelocityMeas velocityUpdateMeas_;
   std::map<int, std::queue<std::pair<cv::Mat, double>>> lastTimeReceived; // Custom last received updates from both modalities // TODO: Make its own class for this
   int lastSeq[mtState::nCam_]; // Custom keep track of sequence numbers to detect droped frames
+  int lastModality;
 
   struct FilterInitializationState {
     FilterInitializationState()
@@ -207,7 +208,7 @@ class RovioNode{
     gotFirstMessages_ = false;
 
     // Subscribe topics
-    int dataset = 1;
+    int dataset = 2;
     switch (dataset) {
       default: // Default to euroc
       case 0: // Euroc
@@ -352,6 +353,7 @@ class RovioNode{
       lastTimeReceived[i] = std::queue<std::pair<cv::Mat,double>>();
       lastSeq[i] = -1;
     }
+    lastModality = -1;
     // End Custom
   }
 
@@ -498,10 +500,11 @@ class RovioNode{
   }
   // Two utility functions for the camera update queue. TODO: Make these into its own class.
   int getOldestCam(const std::map<int, std::queue<std::pair<cv::Mat, double>>>& currentLastReceivedQues) const{
+
     std::pair<int, double> currentOldest(-1, std::numeric_limits<double>::max()); // camera, time
     for (const std::pair<const int, std::queue<std::pair<cv::Mat, double>>>& element : currentLastReceivedQues) {
-      if (element.second.front().second < currentOldest.second)
-        currentOldest=std::make_pair(element.first,element.second.front().second);
+      if (!element.second.empty() && element.second.front().second < currentOldest.second)
+        currentOldest = std::make_pair(element.first, element.second.front().second);
     }
     return currentOldest.first;
   }
@@ -515,7 +518,8 @@ class RovioNode{
     }
     return false;
   }
-
+  const int start_dropping = 780;
+  const int num_dropped = 15;
   /** \brief Image callback for the camera with ID 0
    *
    * @param img - Image message.
@@ -527,7 +531,7 @@ class RovioNode{
       lastSeq[0]=img->header.seq;
     }else{
       if(img->header.seq != ++lastSeq[0]){
-        std::cout << "Droping frames. Camera: 0, lastSeq: " << lastSeq[0] << ", seq: " << img->header.seq << '\n';
+        std::cout << "Dropping frames. Camera: 0, lastSeq: " << lastSeq[0] << ", seq: " << img->header.seq << '\n';
         throw std::ios_base::failure("Dropping frames for some reason.\n");
       }
     }
@@ -541,6 +545,9 @@ class RovioNode{
    */
   void imgCallback1(const sensor_msgs::ImageConstPtr & img) {
     std::lock_guard<std::mutex> lock(m_filter_);
+    if (mtState::nCam_ <2){
+      return;
+    }
     if(lastSeq[1] == -1){
       lastSeq[1]=img->header.seq;
     }else{
@@ -558,6 +565,7 @@ class RovioNode{
    *   @param camID - Camera ID.
    */
   void imgCallback(const sensor_msgs::ImageConstPtr & img, const int camID = 0){
+
     // Get image from msg
     cv_bridge::CvImagePtr cv_ptr;
     try {
@@ -602,12 +610,28 @@ class RovioNode{
 //      }
       // Custom: Tries to update the filter in the chronological order
       // TODO: It is not nice that this is in the image callback, this should be called each time rovio can
+
+      if(img->header.seq > start_dropping && img->header.seq< start_dropping+num_dropped && camID==0 && imgUpdateMeas_.aux().slowDebugActive_ == 0){
+        imgUpdateMeas_.aux().slowDebugActive_ = 1;
+        std::cout << "Storing this frame" << "\n";
+      }else if(imgUpdateMeas_.aux().slowDebugActive_ == 1){
+//        imgUpdateMeas_.aux().slowDebugActive_ = 2;
+      } else if(img->header.seq> start_dropping+num_dropped && camID==0 && imgUpdateMeas_.aux().slowDebugActive_ == 2){
+        imgUpdateMeas_.aux().slowDebugActive_ = 3;
+        std::cout << "Going to mode 3.\n";
+      }
       lastTimeReceived.at(camID).emplace(std::make_pair(cv_img, msgTime));
-      if(!anyEmpty(lastTimeReceived)) {
+      std::cout << "DebugActive: " << imgUpdateMeas_.aux().slowDebugActive_ << ", img->header.seq: " << img->header.seq << ", camID: " << camID << "\n";
+      if(imgUpdateMeas_.aux().slowDebugActive_ != 1 &&(!anyEmpty(lastTimeReceived) || (imgUpdateMeas_.aux().slowDebugActive_ == 2 && camID == 1))) { /// Remove this when moving to finished
         const int camIDOldestImg = getOldestCam(lastTimeReceived);
-        std::pair<cv::Mat ,double> oldestImage = lastTimeReceived[camIDOldestImg].front();
-        lastTimeReceived[camIDOldestImg].pop();
-        if(mpFilter_->safe_.t_ < oldestImage.second) {
+        if(camIDOldestImg == 0 && imgUpdateMeas_.aux().slowDebugActive_ == 2){
+          lastTimeReceived.at(camIDOldestImg).pop();
+          return;
+        }
+        std::pair<cv::Mat ,double> oldestImage = lastTimeReceived.at(camIDOldestImg).front();
+        lastTimeReceived.at(camIDOldestImg).pop();
+        if(mpFilter_->safe_.t_ < oldestImage.second && (true || camIDOldestImg != lastModality || imgUpdateMeas_.aux().slowDebugActive_ != 0)) {
+          lastModality = camIDOldestImg;
           std::cout << "Updating camera " << camIDOldestImg << " from time " << oldestImage.second;
           std::cout << ". Queue lengths: 0:" << lastTimeReceived.at(0).size();
           if (mtState::nCam_ > 1) std::cout << ", 1:" << lastTimeReceived.at(1).size();
@@ -636,7 +660,40 @@ class RovioNode{
           std::cout << "Dropped image that arrived before safe time.\n";
         }
 //      }
-      }else{
+      } else if (imgUpdateMeas_.aux().slowDebugActive_ == 1){
+
+        std::pair<cv::Mat ,double> oldestImage = lastTimeReceived[0].front();
+        lastTimeReceived[0].pop();
+        if(mpFilter_->safe_.t_ < oldestImage.second) {
+          std::cout << "Updating camera " << 0 << " from time " << oldestImage.second;
+          std::cout << ". Queue lengths: 0:" << lastTimeReceived.at(0).size();
+          if (mtState::nCam_ > 1) std::cout << ", 1:" << lastTimeReceived.at(1).size();
+          std::cout << '\n';
+          // End custom
+
+          imgUpdateMeas_.template get<mtImgMeas::_aux>().pyr_[0].computeFromImage(oldestImage.first,
+                                                                                               true); // Custom changed camid, cv_img
+          imgUpdateMeas_.template get<mtImgMeas::_aux>().isValidPyr_[0] = true;  // Custom changed camid, cv_img
+          imgUpdateMeas_.template get<mtImgMeas::_aux>().activeModality_ = 0; // Custom Added this
+          for (int i =0;i<mtState::nCam_;++i){
+            if(i!=0){
+              imgUpdateMeas_.template get<mtImgMeas::_aux>().isValidPyr_[0] = false;
+            }
+          }
+
+          // CUSTOM: Remove check that all cameras have a valid image before updating
+          // I.e. update the filter for each new camera frame independent of the others.
+//      if(imgUpdateMeas_.template get<mtImgMeas::_aux>().areAllValid()){
+          imgUpdateMeas_.template get<mtImgMeas::_aux>().reset(oldestImage.second); // Custom changed msgTime
+          mpFilter_->template addUpdateMeas<0>(imgUpdateMeas_, oldestImage.second);  // Custom changed msgTime
+
+          if(oldestImage.second <1) throw std::logic_error("The time is 0, which it should not be.");
+          updateAndPublish();
+        }else{
+          std::cout << "Dropped image that arrived before safe time.\n";
+        }
+        imgUpdateMeas_.aux().slowDebugActive_ = 2;
+      } else{
 //        std::cout << "Does not update since one of the queues are empty.\n";
       }
     }
@@ -769,7 +826,11 @@ class RovioNode{
         for(int i=0;i<mtState::nCam_;i++){
           if(!mpFilter_->safe_.img_[i].empty() && mpImgUpdate_->doFrameVisualisation_){
             cv::imshow("Tracker" + std::to_string(i), mpFilter_->safe_.img_[i]);
-            cv::waitKey(1); // Custom changed to 1 from 3
+            if(std::get<0>(mpFilter_->updateTimelineTuple_).measMap_.begin()->second.aux().slowDebugActive_ == 3){
+              cv::waitKey(0); // Custom changed to 1 from 3
+            }else{
+              cv::waitKey(1); // Custom changed to 1 from 3
+            }
           }
         }
         if(!mpFilter_->safe_.patchDrawing_.empty() && mpImgUpdate_->visualizePatches_){
@@ -779,7 +840,7 @@ class RovioNode{
 
         // Obtain the save filter state.
         mtFilterState& filterState = mpFilter_->safe_;
-	mtState& state = mpFilter_->safe_.state_;
+	      mtState& state = mpFilter_->safe_.state_;
         state.updateMultiCameraExtrinsics(&mpFilter_->multiCamera_);
         MXD& cov = mpFilter_->safe_.cov_;
         imuOutputCT_.transformState(state,imuOutput_);

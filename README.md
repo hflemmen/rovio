@@ -3,6 +3,7 @@ Se om den rette transformasjonen gj;res n[r vi sammenligner n[v'rende frame med 
 Se om update steget ikke gj;res helt riktig for modaliteten som ikke oppdaterer.
 Lag en input queue som vi kan droppe frames fra om vi ikke prosseserer de kjapt nok
 Flytt de tingene som burde flyttes til updateAndPublish fra img callback.
+Pr;v [ visualiser featuresene n[r de transformeres etter et updat i den andre modaliteten]]
 Ta kontroll over inputkøen for å kunne droppe frames på en mer fornuftig måte og redusere latencyen.
 Sett opp ngrok eller lignende
 https://github.com/vincenthsu/systemd-ngrok
