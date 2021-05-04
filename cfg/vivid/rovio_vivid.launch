@@ -5,6 +5,11 @@
   <remap from="/imu0" to="/imu/data"/>
   <node pkg="rovio" type="rovio_node" name="rovio" output="screen">
   <param name="filter_config" value="$(find rovio)/cfg/vivid/rovio_vivid.info"/>
+  <param name="cam0_offset" value="0.0"/> # timeshift[s](t_imu = t_cam + shift)
+  <param name="cam1_offset" value="0.0"/> # timeshift[s](t_imu = t_cam + shift)
+  <param name="maxDelayBeforeDropping" value="0.2"/> # (s)
+  <param name="storeRuntimes" value="false"/>
+  <param name="maxTimeCamInactive" value="0.12"/> # (s)
 <!--    <param name="camera0_config" value="$(find rovio)/cfg/vivid/rgb.yaml"/>-->
 <!--  <param name="camera1_config" value="/home/henrik/datasets/ktio/Vicon/vicon_tau2_intrinsic_camera_calibration.yaml"/>-->
 <!--  <param name="camera0_config" value="$(find rovio)/cfg/charlie_tau2.yaml"/>-->

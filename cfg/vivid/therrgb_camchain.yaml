@@ -1,4 +1,4 @@
-cam0:
+cam0:tau2
   cam_overlaps: [1]
   camera_model: pinhole
   distortion_coeffs: [-0.431640703150235, 0.17811649959498482, -0.0014905118708651568,

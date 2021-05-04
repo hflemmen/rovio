@@ -83,7 +83,6 @@ class RovioNode{
   typedef typename std::tuple_element<2,typename mtFilter::mtUpdates>::type mtVelocityUpdate;
   typedef typename mtVelocityUpdate::mtMeas mtVelocityMeas;
   mtVelocityMeas velocityUpdateMeas_;
-  std::map<int, std::queue<std::pair<cv::Mat, double>>> lastTimeReceived; // Custom last received updates from both modalities // TODO: Make its own class for this
 
   struct FilterInitializationState {
     FilterInitializationState()
@@ -206,12 +205,9 @@ class RovioNode{
     gotFirstMessages_ = false;
 
     // Subscribe topics
-//    subImu_ = nh_.subscribe("/imu0", 1000, &RovioNode::imuCallback,this);
-    subImu_ = nh_.subscribe("/vn100/imu", 1000, &RovioNode::imuCallback,this);
-//    subImg0_ = nh_.subscribe("/cam0/image_raw", 1000, &RovioNode::imgCallback0,this);
-    subImg0_ = nh_.subscribe("/cam0/cam0", 1000, &RovioNode::imgCallback0,this);
-//    subImg1_ = nh_.subscribe("/cam1/image_raw", 1000, &RovioNode::imgCallback1,this);
-    subImg1_ = nh_.subscribe("/tau_nodelet/thermal_image", 1000, &RovioNode::imgCallback1,this);
+    subImu_ = nh_.subscribe("imu0", 1000, &RovioNode::imuCallback,this);
+    subImg0_ = nh_.subscribe("cam0/image_raw", 1000, &RovioNode::imgCallback0,this);
+    subImg1_ = nh_.subscribe("cam1/image_raw", 1000, &RovioNode::imgCallback1,this);
     subGroundtruth_ = nh_.subscribe("pose", 1000, &RovioNode::groundtruthCallback,this);
     subGroundtruthOdometry_ = nh_.subscribe("odometry", 1000, &RovioNode::groundtruthOdometryCallback, this);
     subVelocity_ = nh_.subscribe("abss/twist", 1000, &RovioNode::velocityCallback,this);
@@ -332,12 +328,6 @@ class RovioNode{
     markerMsg_.color.r = 0.0;
     markerMsg_.color.g = 1.0;
     markerMsg_.color.b = 0.0;
-
-    // Custom: Initialize the queue for mew updates
-    for (int i =0;i<mtState::nCam_;++i){
-      lastTimeReceived[i] = std::queue<std::pair<cv::Mat,double>>();
-    }
-    // End Custom
   }
 
   /** \brief Destructor
@@ -455,8 +445,6 @@ class RovioNode{
     if(init_state_.isInitialized()){
       mpFilter_->addPredictionMeas(predictionMeas_,imu_msg->header.stamp.toSec());
       updateAndPublish();
-//      std::cout.precision(17);
-//      std::cout << "Time for last received IMU message: " << imu_msg->header.stamp.toSec() << '\n';
     } else {
       switch(init_state_.state_) {
         case FilterInitializationState::State::WaitForInitExternalPose: {
@@ -480,25 +468,6 @@ class RovioNode{
       std::cout << "-- Filter: Initialized at t = " << imu_msg->header.stamp.toSec() << std::endl;
       init_state_.state_ = FilterInitializationState::State::Initialized;
     }
-  }
-  // Two utility functions for the camera update queue. TODO: Make these into its own class.
-  int getOldestCam(const std::map<int, std::queue<std::pair<cv::Mat, double>>>& currentLastReceivedQues) const{
-    std::pair<int, double> currentOldest(-1, std::numeric_limits<double>::max()); // camera, time
-    for (const std::pair<const int, std::queue<std::pair<cv::Mat, double>>>& element : currentLastReceivedQues) {
-      if (element.second.front().second < currentOldest.second)
-        currentOldest=std::make_pair(element.first,element.second.front().second);
-    }
-    return currentOldest.first;
-  }
-  bool anyEmpty(const std::map<int, std::queue<std::pair<cv::Mat, double>>>& currentLastReceivedQues) const{
-//    return std::any_of(currentLastReceivedQues.begin(), currentLastReceivedQues.end(),[](const std::pair<const int, std::queue<std::pair<cv::Mat, double>>>& x){
-//      x.second.empty();
-//    });
-    for (const std::pair<const int, std::queue<std::pair<cv::Mat, double>>>& element : currentLastReceivedQues) {
-      if (element.second.empty())
-        return true;
-    }
-    return false;
   }
 
   /** \brief Image callback for the camera with ID 0
@@ -561,52 +530,22 @@ class RovioNode{
     // END CUSTOM
     if(init_state_.isInitialized() && !cv_img.empty()){
       double msgTime = img->header.stamp.toSec();
-//      if(abs(msgTime - imgUpdateMeas_.template get<mtImgMeas::_aux>().imgTime_) >0.1 ){ // EDITED: This was originally exact // Removed this to handle unsynchronized cameras.
-//        for(int i=0;i<mtState::nCam_;i++){
-//          if(imgUpdateMeas_.template get<mtImgMeas::_aux>().isValidPyr_[i]){
-//            std::cout << "    \033[31mFailed Synchronization of Camera Frames, t = " << msgTime << "\033[0m" << std::endl;
-//          }
-//        }
-//        imgUpdateMeas_.template get<mtImgMeas::_aux>().reset(msgTime);
-//      }
-      // Custom: Tries to update the filter in the chronological order
-      // TODO: It is not nice that this is in the image callback, this should be called each time rovio can
-      lastTimeReceived.at(camID).emplace(std::make_pair(cv_img, msgTime));
-      if(!anyEmpty(lastTimeReceived)) {
-        const int camIDOldestImg = getOldestCam(lastTimeReceived);
-        std::pair<cv::Mat ,double> oldestImage = lastTimeReceived[camIDOldestImg].front();
-        lastTimeReceived[camIDOldestImg].pop();
-        if(mpFilter_->safe_.t_ < oldestImage.second) {
-          std::cout << "Updating camera " << camIDOldestImg << " from time " << oldestImage.second;
-          std::cout << ". Queue lengths: 0:" << lastTimeReceived.at(0).size();
-          if (mtState::nCam_ > 1) std::cout << ", 1:" << lastTimeReceived.at(1).size();
-          std::cout << '\n';
-          // End custom
-
-          imgUpdateMeas_.template get<mtImgMeas::_aux>().pyr_[camIDOldestImg].computeFromImage(oldestImage.first,
-                                                                                               true); // Custom changed camid, cv_img
-          imgUpdateMeas_.template get<mtImgMeas::_aux>().isValidPyr_[camIDOldestImg] = true;  // Custom changed camid, cv_img
-          imgUpdateMeas_.template get<mtImgMeas::_aux>().activeModality_ = camIDOldestImg; // Custom Added this
-          for (int i =0;i<mtState::nCam_;++i){
-            if(i!=camIDOldestImg){
-              imgUpdateMeas_.template get<mtImgMeas::_aux>().isValidPyr_[camIDOldestImg] = false;
-            }
+      if(msgTime != imgUpdateMeas_.template get<mtImgMeas::_aux>().imgTime_){
+        for(int i=0;i<mtState::nCam_;i++){
+          if(imgUpdateMeas_.template get<mtImgMeas::_aux>().isValidPyr_[i]){
+            std::cout << "    \033[31mFailed Synchronization of Camera Frames, t = " << msgTime << "\033[0m" << std::endl;
+            throw std::logic_error("Failed synchrnization of cameras.\n");
           }
-
-          // CUSTOM: Remove check that all cameras have a valid image before updating
-          // I.e. update the filter for each new camera frame independent of the others.
-//      if(imgUpdateMeas_.template get<mtImgMeas::_aux>().areAllValid()){
-          imgUpdateMeas_.template get<mtImgMeas::_aux>().reset(oldestImage.second); // Custom changed msgTime
-          mpFilter_->template addUpdateMeas<0>(imgUpdateMeas_, oldestImage.second);  // Custom changed msgTime
-
-          if(oldestImage.second <1) throw std::logic_error("The time is 0, which it should not be.");
-          updateAndPublish();
-        }else{
-          std::cout << "Dropped image that arrived before safe time.\n";
         }
-//      }
-      }else{
-//        std::cout << "Does not update since one of the queues are empty.\n";
+        imgUpdateMeas_.template get<mtImgMeas::_aux>().reset(msgTime);
+      }
+      imgUpdateMeas_.template get<mtImgMeas::_aux>().pyr_[camID].computeFromImage(cv_img,true);
+      imgUpdateMeas_.template get<mtImgMeas::_aux>().isValidPyr_[camID] = true;
+
+      if(imgUpdateMeas_.template get<mtImgMeas::_aux>().areAllValid()){
+        mpFilter_->template addUpdateMeas<0>(imgUpdateMeas_,msgTime);
+        imgUpdateMeas_.template get<mtImgMeas::_aux>().reset(msgTime);
+        updateAndPublish();
       }
     }
   }
@@ -1085,8 +1024,6 @@ class RovioNode{
           pubPatch_.publish(patchMsg_);
         }
         gotFirstMessages_ = true;
-      }else{
-//          std::cout << "Filter update had no effect.\n";
       }
     }
   }

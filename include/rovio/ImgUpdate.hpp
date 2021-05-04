@@ -411,40 +411,35 @@ ImgOutlierDetection<typename FILTERSTATE::mtState>,false>{
     transformFeatureOutputCT_.setFeatureID(ID);
     transformFeatureOutputCT_.setOutputCameraID(activeCamID);
     transformFeatureOutputCT_.transformState(state,featureOutput_);
-
-    // Custom: Add an check to only use the camera that received a new image frame this update.
-//    if(meas_.aux().isValidPyr_[activeCamID]) {
-    if(meas_.aux().activeModality_ == activeCamID){
-        if (useDirectMethod_) {
-            if (doFrameVisualisation_ && featureOutput_.c().com_c()) {
-                if (activeCamID == camID) {
-                    featureOutput_.c().drawPoint(drawImg_, cv::Scalar(0, 175, 175));
-                } else {
-                    featureOutput_.c().drawPoint(drawImg_, cv::Scalar(175, 175, 0));
-                }
-            }
-            if (alignment_.getLinearAlignEquationsReduced(meas_.aux().pyr_[activeCamID],
-                                                          *state.aux().mpCurrentFeature_->mpMultilevelPatch_,
-                                                          featureOutput_.c(), endLevel_, startLevel_, A_red_, b_red_)) {
-                y.template get<mtInnovation::_pix>() = b_red_ + noise.template get<mtNoise::_pix>();
-                if (verbose_) {
-                    std::cout << "    \033[32mMaking update with feature " << ID << " from camera " << camID
-                              << " in camera " << activeCamID << "\033[0m" << std::endl;
-                }
-            } else {
-                y.template get<mtInnovation::_pix>() = noise.template get<mtNoise::_pix>();
-                if (verbose_) {
-                    std::cout << "    \033[31mFailed Construction of Alignment Equations with feature " << ID
-                              << " from camera " << camID << " in camera " << activeCamID << "\033[0m" << std::endl;
-                }
-                cancelIteration_ = true;
-            }
+    if (camID!=meas_.aux().activeModality_){
+      std::cout << "camID: " << camID << ", activeModality_: " << meas_.aux().activeModality_ << '\n';
+      throw std::logic_error("camID and active modality is not the same in evalInnovation");
+    }
+    if(useDirectMethod_){
+      if(doFrameVisualisation_ && featureOutput_.c().com_c()){
+        if(activeCamID==camID){
+          featureOutput_.c().drawPoint(drawImg_, cv::Scalar(0,175,175));
         } else {
-            Eigen::Vector2d pixError;
-            pixError(0) = static_cast<double>(state.aux().feaCoorMeas_[ID].get_c().x - featureOutput_.c().get_c().x);
-            pixError(1) = static_cast<double>(state.aux().feaCoorMeas_[ID].get_c().y - featureOutput_.c().get_c().y);
-            y.template get<mtInnovation::_pix>() = pixError + noise.template get<mtNoise::_pix>();
+          featureOutput_.c().drawPoint(drawImg_, cv::Scalar(175,175,0));
         }
+      }
+      if(alignment_.getLinearAlignEquationsReduced(meas_.aux().pyr_[activeCamID],*state.aux().mpCurrentFeature_->mpMultilevelPatch_,featureOutput_.c(),endLevel_,startLevel_,A_red_,b_red_)){
+        y.template get<mtInnovation::_pix>() = b_red_ + noise.template get<mtNoise::_pix>();
+        if(verbose_){
+          std::cout << "    \033[32mMaking update with feature " << ID << " from camera " << camID << " in camera " << activeCamID << "\033[0m" << std::endl;
+        }
+      } else {
+        y.template get<mtInnovation::_pix>() = noise.template get<mtNoise::_pix>();
+        if(verbose_){
+          std::cout << "    \033[31mFailed Construction of Alignment Equations with feature " << ID << " from camera " << camID << " in camera " << activeCamID << "\033[0m" << std::endl;
+        }
+        cancelIteration_ = true;
+      }
+    } else {
+      Eigen::Vector2d pixError;
+      pixError(0) = static_cast<double>(state.aux().feaCoorMeas_[ID].get_c().x - featureOutput_.c().get_c().x);
+      pixError(1) = static_cast<double>(state.aux().feaCoorMeas_[ID].get_c().y - featureOutput_.c().get_c().y);
+      y.template get<mtInnovation::_pix>() = pixError+noise.template get<mtNoise::_pix>();
     }
   }
 
@@ -636,19 +631,19 @@ ImgOutlierDetection<typename FILTERSTATE::mtState>,false>{
       for(unsigned int i=0;i<mtState::nMax_;i++){
         if(filterState.fsm_.isValid_[i]){
           const int& camID = filterState.state_.CfP(i).camID_;   // Camera ID of the feature.
-          if(camID == meas.aux().activeModality_) { // Custom added check to only work on the image which is present
-            tempCoordinates_ = *filterState.fsm_.features_[i].mpCoordinates_;
-            tempCoordinates_.set_warp_identity();
-            if (mlpTemp1_.isMultilevelPatchInFrame(filterState.prevPyr_[camID], tempCoordinates_, startLevel_, true)) {
-              mlpTemp1_.extractMultilevelPatchFromImage(filterState.prevPyr_[camID], tempCoordinates_, startLevel_,
-                                                        true);
-              mlpTemp1_.computeMultilevelShiTomasiScore(endLevel_, startLevel_);
-              mlpTemp2_.extractMultilevelPatchFromImage(meas.aux().pyr_[camID], tempCoordinates_, startLevel_, true);
-              const float avgError = mlpTemp1_.computeAverageDifference(mlpTemp2_, endLevel_, startLevel_);
-              if (avgError / std::sqrt(mlpTemp1_.e1_) > static_cast<float>(pixelCoordinateMotionTh_))
-                totCountInMotion++;
-              totCountInFrame++;
-            }
+          if (camID!=meas.aux().activeModality_){
+            std::cout << "camID: " << camID << ", activeModality_: " << meas.aux().activeModality_ << '\n';
+            throw std::logic_error("camID and active modality is not the same in the visual motion detection.");
+          }
+          tempCoordinates_ = *filterState.fsm_.features_[i].mpCoordinates_;
+          tempCoordinates_.set_warp_identity();
+          if(mlpTemp1_.isMultilevelPatchInFrame(filterState.prevPyr_[camID],tempCoordinates_,startLevel_,true)){
+            mlpTemp1_.extractMultilevelPatchFromImage(filterState.prevPyr_[camID],tempCoordinates_,startLevel_,true);
+            mlpTemp1_.computeMultilevelShiTomasiScore(endLevel_,startLevel_);
+            mlpTemp2_.extractMultilevelPatchFromImage(meas.aux().pyr_[camID],tempCoordinates_,startLevel_,true);
+            const float avgError = mlpTemp1_.computeAverageDifference(mlpTemp2_,endLevel_,startLevel_);
+            if(avgError/std::sqrt(mlpTemp1_.e1_) > static_cast<float>(pixelCoordinateMotionTh_)) totCountInMotion++;
+            totCountInFrame++;
           }
         }
       }
@@ -687,7 +682,7 @@ ImgOutlierDetection<typename FILTERSTATE::mtState>,false>{
     state.updateMultiCameraExtrinsics(mpMultiCamera_);
 
     while(ID < mtState::nMax_ && foundValidMeasurement == false){
-      if(filterState.fsm_.isValid_[ID] ){
+      if(filterState.fsm_.isValid_[ID]){
         // Data handling stuff
         FeatureManager<mtState::nLevels_,mtState::patchSize_,mtState::nCam_>& f = filterState.fsm_.features_[ID];
         const int camID = f.mpCoordinates_->camID_;
@@ -758,7 +753,7 @@ ImgOutlierDetection<typename FILTERSTATE::mtState>,false>{
           } else {
             if (meas.aux().isValidPyr_[activeCamID]){
               std::cerr << "This pyramid is not valid.\n";
-//              throw std::logic_error("This pyramid is not valid.\n");
+              throw std::logic_error("This pyramid is not valid.\n");
             }
             if(alignment_.align2DAdaptive(alignedCoordinates_,meas.aux().pyr_[activeCamID],*f.mpMultilevelPatch_,featureOutput_.c(),startLevel_,endLevel_,
                                           alignConvergencePixelRange_,alignCoverageRatio_,alignMaxUniSample_)){
@@ -1015,8 +1010,12 @@ ImgOutlierDetection<typename FILTERSTATE::mtState>,false>{
       }
       for(int camID = 0;camID<mtState::nCam_;camID++){
         // Custom: To avoid finding features in images which are not present
-        if(camID != meas.aux().activeModality_){
-          continue; // Don't find features in a modality which is not being updated
+//        if(camID != meas.aux().activeModality_){
+//          continue; // Don't find features in a modality which is not being updated
+//        }
+        if (camID!=meas_.aux().activeModality_){
+          std::cout << "camID: " << camID << ", activeModality_: " << meas_.aux().activeModality_ << '\n';
+          throw std::logic_error("camID and active modality is not the same");
         }
         // End custom
         // Get Candidates
@@ -1026,12 +1025,12 @@ ImgOutlierDetection<typename FILTERSTATE::mtState>,false>{
           //CUSTOMIZATION from rotio
           //Histogram Equalization should only applied be if image is in 16-bit range
           bool applyHistogramEqualization = false;
-          double imgMin, imgMax;
-          cv::minMaxLoc(meas.aux().pyr_[camID].imgs_[startLevel_], &imgMin, &imgMax);
-          if (imgMax > 255.0)
-              applyHistogramEqualization = true;
-          if (verbose_)
-              std::cout << "Image Min/Max:" << imgMin << "/" << imgMax << "\t applyHistogramEqualization=" << applyHistogramEqualization << std::endl;
+//          double imgMin, imgMax;
+//          cv::minMaxLoc(meas.aux().pyr_[camID].imgs_[startLevel_], &imgMin, &imgMax);
+//          if (imgMax > 255.0)
+//              applyHistogramEqualization = true;
+//          if (verbose_)
+//              std::cout << "Image Min/Max:" << imgMin << "/" << imgMax << "\t applyHistogramEqualization=" << applyHistogramEqualization << std::endl;
 
           //Detect FAST corners, equalize image if 16-bit before application of OpenCV FAST detector
           for (int l = endLevel_; l <= startLevel_; l++)
@@ -1119,12 +1118,14 @@ ImgOutlierDetection<typename FILTERSTATE::mtState>,false>{
       }
     }
 
-    // Copy image pyramid to state Original:
-//    for(int i=0;i<mtState::nCam_;i++){
-//      filterState.prevPyr_[i] = meas.aux().pyr_[i];
-//    }
-// Custom: Only adds the active modality to the state.
-    filterState.prevPyr_[meas.aux().activeModality_] = meas.aux().pyr_[meas.aux().activeModality_];
+    // Copy image pyramid to state
+    for(int i=0;i<mtState::nCam_;i++){
+      filterState.prevPyr_[i] = meas.aux().pyr_[i];
+      if (i!=meas_.aux().activeModality_){
+        std::cout << "camID: " << i << ", activeModality_: " << meas_.aux().activeModality_ << '\n';
+        throw std::logic_error("camID and active modality is not the same in the copy image pyramid step.");
+      }
+    }
 
     // Zero Velocity updates if appropriate
     if(isZeroVelocityUpdateEnabled_

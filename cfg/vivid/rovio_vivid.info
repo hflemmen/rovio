@@ -5,7 +5,7 @@ Common
 {
 	doVECalibration false;		Should the camera-IMU extrinsics be calibrated online
 	depthType 1;				Type of depth parametrization (0: normal, 1: inverse depth, 2: log, 3: hyperbolic)
-	verbose true;				Is the verbose active
+	verbose false;				Is the verbose active
 }
 Camera0; Extrinsics obtained from the self calibration of rovio(Commented out)
 {
@@ -20,7 +20,7 @@ Camera0; Extrinsics obtained from the self calibration of rovio(Commented out)
 }
 Camera1
 {
-	CalibrationFile /home/henrik/c_ws/src/rovio/cfg/vivid/thermal.yaml;												Camera-Calibration file for intrinsics
+	CalibrationFile /home/henrik/c_ws/src/rovio/cfg/vivid/thermal_original.yaml;												Camera-Calibration file for intrinsics
 	qCM_x    -0.4934373   ; 0.523377823046;										X-entry of IMU to Camera quaterion (Hamilton)
 	qCM_y     0.5024243   ; 0.468971878742;										Y-entry of IMU to Camera quaterion (Hamilton)
 	qCM_z     0.5091132   ; 0.483048759493;											Z-entry of IMU to Camera quaterion (Hamilton)
@@ -106,7 +106,7 @@ ImgUpdate
     minRelativeSTScore 0.75;									Minimum relative ST-score for extracting new feature patch
     minAbsoluteSTScore 5.0;										Minimum absolute ST-score for extracting new feature patch
     minTimeBetweenPatchUpdate 1.0;								Minimum time between new multilevel patch extrection [s]
-    fastDetectionThreshold 5;									Fast corner detector treshold while adding new feature
+    fastDetectionThreshold 4;									Fast corner detector treshold while adding new feature
     alignConvergencePixelRange 10;								Assumed convergence range for image alignment (gets scaled with the level) [pixels]
     alignCoverageRatio 2;										How many sigma of the uncertainty should be covered in the adaptive alignement
     alignMaxUniSample 1;										Maximal number of alignment seeds on one side -> total number of sample = 2n+1. Carefull can get very costly if diverging!
@@ -123,6 +123,8 @@ ImgUpdate
     noiseGainForOffCamera 10.0;									Factor added on update noise if not main camera
     discriminativeSamplingDistance 0.02;						Sampling distance for checking discriminativity of patch (if <= 0.0 no check is performed).
     discriminativeSamplingGain 1.1;								Gain for threshold above which the samples must lie (if <= 1.0 the patchRejectionTh is used).
+    maxAllowedFeatureDistance 25.0;                             Max allowed estimated feature distance after performing update, remove features with very far away estimated depth and clustered features during backward motion.
+
     MotionDetection
     {
     	isEnabled 1;											Is the motion detection enabled
@@ -166,6 +168,12 @@ Prediction
         vea 1.0e-8;								Covariance parameter of rotational extrinsics prediction [rad^2/s]
         dep 0.0001;							Covariance parameter of distance prediction [m^2/s]
         nor 0.00001;								Covariance parameter of bearing vector prediction [rad^2/s]
+    }
+    GravityVector
+    {
+        g_x 0.0;                                    X-Component of gravity vector [m^2/s]
+        g_y 0.0;                                    Y-Component of gravity vector [m^2/s]
+        g_z -9.81;                               Z-Component of gravity vector [m^2/s]
     }
     MotionDetection
     {
