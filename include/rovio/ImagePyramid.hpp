@@ -36,29 +36,6 @@
 
 namespace rovio{
 
-/** \brief Halfsamples an image.
- *
- *   @param imgIn - Input image.
- *   @param imgOut - Output image (halfsampled).
- */
-void halfSample(const cv::Mat& imgIn,cv::Mat& imgOut){
-  imgOut.create(imgIn.rows/2,imgIn.cols/2,imgIn.type());
-  const int refStepIn = imgIn.step.p[0];
-  const int refStepOut = imgOut.step.p[0];
-  uint8_t* imgPtrInTop;
-  uint8_t* imgPtrInBot;
-  uint8_t* imgPtrOut;
-  for(int y=0; y<imgOut.rows; ++y){
-    imgPtrInTop =  imgIn.data + 2*y*refStepIn;
-    imgPtrInBot =  imgIn.data + (2*y+1)*refStepIn;
-    imgPtrOut = imgOut.data + y*refStepOut;
-    for(int x=0; x<imgOut.cols; ++x, ++imgPtrOut, imgPtrInTop += 2, imgPtrInBot += 2)
-    {
-      *imgPtrOut = (imgPtrInTop[0]+imgPtrInTop[1]+imgPtrInBot[0]+imgPtrInBot[1])/4;
-    }
-  }
-}
-
 /** \brief Image pyramid with selectable number of levels.
  *
  *   @tparam n_levels - Number of pyramid levels.
@@ -82,15 +59,15 @@ class ImagePyramid{
     img.copyTo(imgs_[0]);
     centers_[0] = cv::Point2f(0,0);
     for(int i=1; i<n_levels; ++i){
-      if(!useCv){
-        halfSample(imgs_[i-1],imgs_[i]);
-        centers_[i].x = centers_[i-1].x-pow(0.5,2-i)*(float)(imgs_[i-1].rows%2);
-        centers_[i].y = centers_[i-1].y-pow(0.5,2-i)*(float)(imgs_[i-1].cols%2);
-      } else {
+//      if(!useCv){
+//        halfSample(imgs_[i-1],imgs_[i]);
+//        centers_[i].x = centers_[i-1].x-pow(0.5,2-i)*(float)(imgs_[i-1].rows%2);
+//        centers_[i].y = centers_[i-1].y-pow(0.5,2-i)*(float)(imgs_[i-1].cols%2);
+//      } else {
         cv::pyrDown(imgs_[i-1],imgs_[i],cv::Size(imgs_[i-1].cols/2, imgs_[i-1].rows/2));
         centers_[i].x = centers_[i-1].x-pow(0.5,2-i)*(float)((imgs_[i-1].rows%2)+1);
         centers_[i].y = centers_[i-1].y-pow(0.5,2-i)*(float)((imgs_[i-1].cols%2)+1);
-      }
+//      }
     }
   }
 
@@ -137,16 +114,13 @@ class ImagePyramid{
    * @param valid_radius       - Radius inside which a feature is considered valid (as ratio of shortest image side)
    */
 //  void detectFastCorners(FeatureCoordinatesVec & candidates, int l, int detectionThreshold, double valid_radius = std::numeric_limits<double>::max()) const{ // Origninal
-    void detectFastCorners(FeatureCoordinatesVec &candidates, int l, int detectionThreshold,double valid_radius = std::numeric_limits<double>::max(), bool applyHistogramEqualization = false) const{ // Custom from rotio
+    void detectFastCorners(FeatureCoordinatesVec &candidates, int l, int detectionThreshold,double valid_radius = std::numeric_limits<double>::max()) const{ // Custom from rotio
     std::vector<cv::KeyPoint> keypoints;
 
     //CUSTOMIZATION from rotio
     //If image is 16-bit it is histrogram equalized and then converted to 8-bit for FAST, otherwise if 8-bit image range convert from float to 8-bit
     cv::Mat histEqualizedLevelImg;
-    if (applyHistogramEqualization)
-        equalizeHistogram(l, histEqualizedLevelImg);
-    else
-        imgs_[l].convertTo(histEqualizedLevelImg, CV_8UC1); //smk: needed as original input image is saved as float now, which is not accepted by FAST detector
+    imgs_[l].convertTo(histEqualizedLevelImg, CV_8UC1); //smk: needed as original input image is saved as float now, which is not accepted by FAST detector
     //CUSTOMIZATION
 
 #if (CV_MAJOR_VERSION < 3)
@@ -156,7 +130,7 @@ class ImagePyramid{
     auto feature_detector_fast = cv::FastFeatureDetector::create(detectionThreshold, true);
     feature_detector_fast->detect(histEqualizedLevelImg, keypoints); //CUSTOMIZATION
 #endif
-
+    std::cout << "Detected corners: " << keypoints.size() << '\n';
     candidates.reserve(candidates.size()+keypoints.size());
     for (auto it = keypoints.cbegin(), end = keypoints.cend(); it != end; ++it) {
 
@@ -172,45 +146,6 @@ class ImagePyramid{
               levelTranformCoordinates(FeatureCoordinates(cv::Point2f(it->pt.x, it->pt.y)),l,0));
     }
   }
-
-    //CUSTOMIZATION from rotio
-    //Description: This function takes in an image and improves its contrast by equalizing its histogram.
-    //This function is used for equalization of 16-bit thermal images which cannot be improved cv::equalizeHist function.
-    //First a histogram of the image is calculated.
-    //Then useful range is computed by clipping intensity containing atleast N pixels in bin from beginning and end of the histogram.
-    //The useful range is then mapped to 8-bit image range of 0-255(outImg).
-    void equalizeHistogram(int lvl, cv::Mat &outImg) const
-    {
-        //Set Min and Max range for 16-bit
-        float intensityMin = 0.0, intensityMax = 65535.0;
-        int histSize = intensityMax - intensityMin + 1;
-        float range[] = {intensityMin, intensityMax};
-        const float *histRange = {range};
-
-        //Create histogram
-        cv::Mat histogram;
-        cv::calcHist(&imgs_[lvl], 1, 0, cv::noArray(), histogram, 1, &histSize, &histRange, true, false);
-
-        //Find clipping range w.r.t minimmum and maximum intensity values (CDF) with atleast N=10000 pixels in bin
-        int cummulativePixels = 10000 * std::pow(0.5, lvl);
-        //Min value
-        int bin = 1; //ignoring 0 bin
-        for (int sum = 0; sum < cummulativePixels; sum += histogram.at<float>(bin), ++bin)
-            ;
-        double min_val = bin - 1;
-        //Max value
-        bin = histSize - 1;
-        for (int sum = 0; sum < cummulativePixels; sum += histogram.at<float>(bin), --bin)
-            ;
-        double max_val = bin + 1;
-
-        //Scale and convert to 8-bit
-        //reference: http://answers.opencv.org/question/75510/how-to-make-auto-adjustmentsbrightness-and-contrast-for-image-android-opencv-image-correction/?answer=75797#post-id-75797
-        double alpha = 255.0 / (max_val - min_val);
-        double beta = -1.0 * min_val * alpha;
-        imgs_[lvl].convertTo(outImg, CV_8UC1, alpha, beta);
-    }
-    //CUSTOMIZATION
 };
 
 }

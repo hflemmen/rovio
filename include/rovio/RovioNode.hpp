@@ -83,6 +83,7 @@ class RovioNode{
   typedef typename std::tuple_element<2,typename mtFilter::mtUpdates>::type mtVelocityUpdate;
   typedef typename mtVelocityUpdate::mtMeas mtVelocityMeas;
   mtVelocityMeas velocityUpdateMeas_;
+  int lastSeq;
 
   struct FilterInitializationState {
     FilterInitializationState()
@@ -261,6 +262,7 @@ class RovioNode{
     for(int i=0;i<9;i++){
       imuBiasMsg_.orientation_covariance[i] = 0.0;
     }
+    lastSeq = -1;
 
     // PointCloud message.
     pclMsg_.header.frame_id = imu_frame_;
@@ -496,6 +498,12 @@ class RovioNode{
    *   @param camID - Camera ID.
    */
   void imgCallback(const sensor_msgs::ImageConstPtr & img, const int camID = 0){
+    if (lastSeq < 0 || img->header.seq  == lastSeq + 1){
+      lastSeq = img->header.seq;
+    }else{
+      std::cout << "lastseq:" << lastSeq << ", header.seq: " << img->header.seq << '\n';
+      throw std::logic_error("The sequences numbers are wrong.\n");
+    }
     // Get image from msg
     cv_bridge::CvImagePtr cv_ptr;
     try {
@@ -527,11 +535,38 @@ class RovioNode{
         cv_ptr->image.convertTo(cv_img,
                                 CV_32FC1); //smk: convert incoming image to floating point value, this can deal with single channel 8 and 16 bit images
     }
+//    cv_img += 0.01;
+    cv::Mat1b backConverted;
+    cv_img.convertTo(backConverted, CV_8UC1);
+    cv::Mat1b notConverted;
+    cv::cvtColor(cv_ptr->image,notConverted,CV_BGR2GRAY);
+    cv::Mat1s diff_not_to_back;
+//    diff = cv_ptr->image - backConverted;
+    cv::subtract(notConverted, backConverted, diff_not_to_back);
+    cv::Mat1s diff_back_to_not;
+    cv::subtract(backConverted, notConverted,diff_back_to_not);
+//    cv::imshow("notConverted", notConverted);
+//    cv::imshow("backConverted", backConverted);
+//    cv::imshow("diff_not_to_back", diff_not_to_back * 120);
+//    cv::imshow("diff_back_to_not", diff_back_to_not * 120);
+//    cv::waitKey(1);
+    double sumOfDiff_ntb = cv::sum(diff_not_to_back)[0];
+    const int totalPixels_ntb = diff_not_to_back.rows * diff_not_to_back.cols;
+//    std::cout << "Sum of diff_not_to_back: " << sumOfDiff_ntb << ", total pixels: " << totalPixels_ntb << ", share: " << sumOfDiff_ntb / (double)(totalPixels_ntb) << '\n';
+    double sumOfDiff_btn = cv::sum(diff_back_to_not)[0];
+    const int totalPixels_btn = diff_back_to_not.rows * diff_back_to_not.cols;
+//    std::cout << "Sum of diff_back_to_not: " << sumOfDiff_btn << ", total pixels: " << totalPixels_btn << ", share: " << sumOfDiff_btn / (double)(totalPixels_btn) << '\n';
+    float testf1 = 4.1;
+    float testf2 = 3.9;
+//    std::cout << "testf1:" << testf1 << ", testf2:" << testf2 << ", saturate1: " << (int) cv::saturate_cast<char>(testf1) << ", saturate2: " << (int) cv::saturate_cast<char>(testf2) << '\n';
+    cv::Point2i testpoint = cv::Point2i(10,10);
+//    std::cout << "diff_btn: " << (unsigned int) diff_back_to_not.at<char>(testpoint) << ", back:" << (unsigned int)backConverted.at<char>(testpoint) << ", not: " <<(unsigned int) notConverted.at<char>(testpoint) << ", cvImg: " << (unsigned int) cv_img.at<float>(testpoint) << '\n';
     //cv_ptr->image.copyTo(cv_img); // Original
     // END CUSTOM
     if(init_state_.isInitialized() && !cv_img.empty()){
+
       double msgTime = img->header.stamp.toSec();
-      if(abs(msgTime - imgUpdateMeas_.template get<mtImgMeas::_aux>().imgTime_) >0.1 ){ // EDITED: This was originally exact // TODO: Handle unsynchronized thermal and visual cameras.
+      if(msgTime != imgUpdateMeas_.template get<mtImgMeas::_aux>().imgTime_){
         for(int i=0;i<mtState::nCam_;i++){
           if(imgUpdateMeas_.template get<mtImgMeas::_aux>().isValidPyr_[i]){
             std::cout << "    \033[31mFailed Synchronization of Camera Frames, t = " << msgTime << "\033[0m" << std::endl;
@@ -541,6 +576,22 @@ class RovioNode{
       }
       imgUpdateMeas_.template get<mtImgMeas::_aux>().pyr_[camID].computeFromImage(cv_img,true);
       imgUpdateMeas_.template get<mtImgMeas::_aux>().isValidPyr_[camID] = true;
+      notConverted.copyTo(imgUpdateMeas_.template get<mtImgMeas::_aux>().refImg);
+
+      cv::Mat1b backConverted3;
+      imgUpdateMeas_.template get<mtImgMeas::_aux>().pyr_[camID].imgs_[0].convertTo(backConverted3, CV_8U);
+      cv::Mat1s diff3;
+      cv::subtract(imgUpdateMeas_.template get<mtImgMeas::_aux>().refImg, backConverted3, diff3);
+      double sumOfDiffs3 = cv::sum(cv::abs(diff3))[0];
+//      std::cout << "The sum of difference(l 586): " << sumOfDiffs3 << '\n';
+
+      cv::Mat1b backConverted4;
+      cv_img.convertTo(backConverted4, CV_8U);
+      cv::Mat1s diff4;
+      cv::subtract(imgUpdateMeas_.template get<mtImgMeas::_aux>().refImg, backConverted4, diff4);
+      double sumOfDiffs4 = cv::sum(cv::abs(diff4))[0];
+//      std::cout << "The sum of difference(l 593): " << sumOfDiffs4 << '\n';
+
 
       if(imgUpdateMeas_.template get<mtImgMeas::_aux>().areAllValid()){
         mpFilter_->template addUpdateMeas<0>(imgUpdateMeas_,msgTime);
@@ -662,6 +713,7 @@ class RovioNode{
       const double oldSafeTime = mpFilter_->safe_.t_;
       int c1 = std::get<0>(mpFilter_->updateTimelineTuple_).measMap_.size();
       double lastImageTime;
+
       if(std::get<0>(mpFilter_->updateTimelineTuple_).getLastTime(lastImageTime)){
         mpFilter_->updateSafe(&lastImageTime);
       }
@@ -681,7 +733,9 @@ class RovioNode{
           }
         }
         if(!mpFilter_->safe_.patchDrawing_.empty() && mpImgUpdate_->visualizePatches_){
-          cv::imshow("Patches", mpFilter_->safe_.patchDrawing_);
+          cv::Mat tempImg;
+          mpFilter_->safe_.patchDrawing_.convertTo(tempImg, CV_8UC3);
+          cv::imshow("Patches", tempImg);
           cv::waitKey(3);
         }
 

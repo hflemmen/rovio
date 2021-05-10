@@ -145,8 +145,10 @@ class Patch {
   void drawPatch(cv::Mat &drawImg, const cv::Point2i &c, int stretch = 1, const bool withBorder = false) const
   {
       // From rotio
-      const int refStepY = drawImg.step.p[0];
-      const int refStepX = drawImg.step.p[1];
+//      const int refStepY = drawImg.step.p[0];
+//      const int refStepX = drawImg.step.p[1];
+    const int refStepY = drawImg.step1(0);
+    const int refStepX = drawImg.step1(1);
       //uint8_t *img_ptr; //ORIGINAL
       float *img_ptr; //smk: replace by float*
       const float *it_patch;
@@ -189,54 +191,6 @@ class Patch {
 //      }
 //  }
 
-  void drawPatch_8bit(cv::Mat& drawImg,const cv::Point2i& c,int stretch = 1,const bool withBorder = false) const{
-    const int refStepY = drawImg.step.p[0];
-    const int refStepX = drawImg.step.p[1];
-    uint8_t* img_ptr;
-    const float* it_patch;
-    if(withBorder){
-      it_patch = patchWithBorder_;
-    } else {
-      it_patch = patch_;
-    }
-    for(int y=0; y<patchSize+2*(int)withBorder; ++y, it_patch += patchSize+2*(int)withBorder){
-      img_ptr = (uint8_t*) drawImg.data + (c.y+y*stretch)*refStepY + c.x*refStepX;
-      for(int x=0; x<patchSize+2*(int)withBorder; ++x)
-        for(int i=0;i<stretch;++i){
-          for(int j=0;j<stretch;++j){
-            img_ptr[x*stretch*refStepX+i*refStepY+j*refStepX+0] = (uint8_t)(it_patch[x]);
-            if(drawImg.channels() == 3){
-              img_ptr[x*stretch*refStepX+i*refStepY+j*refStepX+1] = (uint8_t)(it_patch[x]);
-              img_ptr[x*stretch*refStepX+i*refStepY+j*refStepX+2] = (uint8_t)(it_patch[x]);
-            }
-          }
-        }
-    }
-  }
-    void drawPatch_16bit(cv::Mat& drawImg,const cv::Point2i& c,int stretch = 1,const bool withBorder = false) const{
-        const int refStepY = drawImg.step.p[0];
-        const int refStepX = drawImg.step.p[1];
-        uint16_t* img_ptr;
-        const float* it_patch;
-        if(withBorder){
-            it_patch = patchWithBorder_;
-        } else {
-            it_patch = patch_;
-        }
-        for(int y=0; y<patchSize+2*(int)withBorder; ++y, it_patch += patchSize+2*(int)withBorder){
-            img_ptr = (uint16_t*) drawImg.data + (c.y+y*stretch)*refStepY + c.x*refStepX;
-            for(int x=0; x<patchSize+2*(int)withBorder; ++x)
-                for(int i=0;i<stretch;++i){
-                    for(int j=0;j<stretch;++j){
-                        img_ptr[x*stretch*refStepX+i*refStepY+j*refStepX+0] = (uint16_t)(it_patch[x]);
-                        if(drawImg.channels() == 3){
-                            img_ptr[x*stretch*refStepX+i*refStepY+j*refStepX+1] = (uint16_t)(it_patch[x]);
-                            img_ptr[x*stretch*refStepX+i*refStepY+j*refStepX+2] = (uint16_t)(it_patch[x]);
-                        }
-                    }
-                }
-        }
-    }
 
   /** \brief Draws the patch borders into an image.
    *
@@ -313,6 +267,7 @@ class Patch {
     const int halfpatch_size = patchSize/2+(int)withBorder;
 //    const int refStep = img.step.p[0]; // Original
     const int refStep = img.step1(); // Edited to accomedate the size of float.
+//    std::cout << "refstep:" << refStep << ", cols:" << img.cols << ", p[0]: " << img.step.p[0] << ", type: " << img.type() << ", type of CV_32F:" << CV_32F << ", of CV_32FC1: " << CV_32FC1 << '\n';
     // Get Pointers
     //uint8_t *img_ptr; //ORIGINAL
     float *img_ptr; //smk: replace by float*

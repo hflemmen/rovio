@@ -50,7 +50,7 @@ class RovioScene{
   std::shared_ptr<SceneObject> mpDepthVar_[mtState::nCam_];
   std::shared_ptr<SceneObject> mpPatches_[mtState::nMax_];
   RovioScene(){
-    patch_ = cv::Mat::zeros(mtState::patchSize_*pow(2,mtState::nLevels_-1),mtState::patchSize_*pow(2,mtState::nLevels_-1),CV_8UC1);
+    patch_ = cv::Mat::zeros(mtState::patchSize_*pow(2,mtState::nLevels_-1),mtState::patchSize_*pow(2,mtState::nLevels_-1),CV_32FC1);
   }
   virtual ~RovioScene(){};
   void addKeyboardCB(unsigned char Key, std::function<void()> f){

@@ -84,9 +84,21 @@ class ImgUpdateMeasAuxiliary: public LWF::AuxiliaryBase<ImgUpdateMeasAuxiliary<S
     }
     return true;
   }
+  ImgUpdateMeasAuxiliary& operator=(const ImgUpdateMeasAuxiliary other)
+  {
+//    std::cout << "copy assignment of imgMeasAux\n";
+    for (int i = 0; i < STATE::nCam_; ++i) {
+      pyr_[i] = other.pyr_[i];
+      isValidPyr_[i] = other.isValidPyr_[i];
+    }
+    imgTime_ = other.imgTime_;
+    other.refImg.copyTo(refImg);
+    return *this;
+  }
   ImagePyramid<STATE::nLevels_> pyr_[STATE::nCam_];
   bool isValidPyr_[STATE::nCam_];
   double imgTime_;
+  cv::Mat1b refImg;
 };
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -404,6 +416,14 @@ ImgOutlierDetection<typename FILTERSTATE::mtState>,false>{
    *  @param noise        - Additive discrete Gaussian noise.
    */
   void evalInnovation(mtInnovation& y, const mtState& state, const mtNoise& noise) const{
+
+    cv::Mat1b backConverted;
+    meas_.aux().pyr_[0].imgs_[0].convertTo(backConverted, CV_8U);
+    cv::Mat1s diff;
+    cv::subtract(meas_.aux().refImg, backConverted, diff);
+    double sumOfDiffs = cv::sum(cv::abs(diff))[0];
+//    std::cout << "The sum of difference(l 414): " << sumOfDiffs << '\n';
+
     const int& ID = state.aux().activeFeature_;
     const int& camID = state.CfP(ID).camID_;
     const int activeCamID = (state.aux().activeCameraCounter_ + camID)%mtState::nCam_;
@@ -475,6 +495,13 @@ ImgOutlierDetection<typename FILTERSTATE::mtState>,false>{
   }
 
   bool extraOutlierCheck(const mtState& state) const{
+    cv::Mat1b backConverted;
+    meas_.aux().pyr_[0].imgs_[0].convertTo(backConverted, CV_8U);
+    cv::Mat1s diff;
+    cv::subtract(meas_.aux().refImg, backConverted, diff);
+    double sumOfDiffs = cv::sum(cv::abs(diff))[0];
+//    std::cout << "The sum of difference(l 492): " << sumOfDiffs << '\n';
+
     const int& ID = state.aux().activeFeature_;
     const int& camID = state.CfP(ID).camID_;
     const int activeCamID = (state.aux().activeCameraCounter_ + camID)%mtState::nCam_;
@@ -589,13 +616,8 @@ ImgOutlierDetection<typename FILTERSTATE::mtState>,false>{
       if(doFrameVisualisation_){
           //CUSTOMIZATION from rotio
           //Check if image needs to be normalized for display purposes
-          double imgMin, imgMax;
-          cv::minMaxLoc(meas.aux().pyr_[i].imgs_[startLevel_], &imgMin, &imgMax); //Check on the highest allowed pyramid level to save time, Equaliztion applied on original image
           cv::Mat tmpImg;
-          if (imgMax > 255.0)
-              meas.aux().pyr_[i].equalizeHistogram(0, tmpImg);
-          else
-              meas.aux().pyr_[i].imgs_[0].convertTo(tmpImg, CV_8UC1);
+          meas.aux().pyr_[i].imgs_[0].convertTo(tmpImg, CV_8UC1);
           //Convert Image to color for drawing purposes
           cvtColor(tmpImg, filterState.img_[i], CV_GRAY2RGB);
           //CUSTOMIZATION
@@ -604,7 +626,7 @@ ImgOutlierDetection<typename FILTERSTATE::mtState>,false>{
     filterState.imgTime_ = filterState.t_;
     filterState.imageCounter_++;
     if(visualizePatches_){
-      filterState.patchDrawing_ = cv::Mat::zeros(mtState::nMax_*filterState.drawPS_,(1+2*mtState::nCam_)*filterState.drawPS_,CV_8UC3);
+      filterState.patchDrawing_ = cv::Mat::zeros(mtState::nMax_*filterState.drawPS_,(1+2*mtState::nCam_)*filterState.drawPS_,CV_32FC3);
     }
     filterState.state_.aux().activeFeature_ = 0;
     filterState.state_.aux().activeCameraCounter_ = 0;
@@ -654,6 +676,12 @@ ImgOutlierDetection<typename FILTERSTATE::mtState>,false>{
    *  @todo split into methods
    */
   void preProcess(mtFilterState& filterState, const mtMeas& meas, bool& isFinished){
+    cv::Mat1b backConverted;
+    meas.aux().pyr_[0].imgs_[0].convertTo(backConverted, CV_8U);
+    cv::Mat1s diff;
+    cv::subtract(meas.aux().refImg, backConverted, diff);
+    double sumOfDiffs = cv::sum(cv::abs(diff))[0];
+//    std::cout << "The sum of difference(l 658): " << sumOfDiffs << '\n';
     if(isFinished){ // gets called if this is the first call
       commonPreProcess(filterState,meas);
       isFinished = false;
@@ -776,6 +804,12 @@ ImgOutlierDetection<typename FILTERSTATE::mtState>,false>{
     if(ID >= mtState::nMax_){
       isFinished = true;
     }
+    cv::Mat1b backConverted2;
+    meas.aux().pyr_[0].imgs_[0].convertTo(backConverted2, CV_8U);
+    cv::Mat1s diff2;
+    cv::subtract(meas.aux().refImg, backConverted2, diff2);
+    double sumOfDiffs2 = cv::sum(diff2)[0];
+//    std::cout << "The sum of difference(l 786): " << sumOfDiffs2 << '\n';
   };
 
   /** \brief Post-Processing for the image update.
@@ -903,6 +937,12 @@ ImgOutlierDetection<typename FILTERSTATE::mtState>,false>{
   void commonPostProcess(mtFilterState& filterState, const mtMeas& meas){
     typename mtFilterState::mtState& state = filterState.state_;
     MXD& cov = filterState.cov_;
+    cv::Mat1b backConverted;
+    meas.aux().pyr_[0].imgs_[0].convertTo(backConverted, CV_8U);
+    cv::Mat1s diff;
+    cv::subtract(meas.aux().refImg, backConverted, diff);
+    double sumOfDiffs = cv::sum(diff)[0];
+//    std::cout << "The sum of difference(l 907: " << sumOfDiffs << '\n';
 
     // Actualize camera extrinsics
     state.updateMultiCameraExtrinsics(mpMultiCamera_);
@@ -992,25 +1032,19 @@ ImgOutlierDetection<typename FILTERSTATE::mtState>,false>{
       }
       for(int camID = 0;camID<mtState::nCam_;camID++){
         // Get Candidates
-//        if(verbose_) std::cout << "Adding keypoints" << std::endl;
+        if(verbose_) std::cout << "Adding keypoints" << std::endl;
         const double t1 = (double) cv::getTickCount();
         candidates_.clear();
-          //CUSTOMIZATION from rotio
-          //Histogram Equalization should only applied be if image is in 16-bit range
-          bool applyHistogramEqualization = false;
-          double imgMin, imgMax;
-          cv::minMaxLoc(meas.aux().pyr_[camID].imgs_[startLevel_], &imgMin, &imgMax);
-          if (imgMax > 255.0)
-              applyHistogramEqualization = true;
-          if (verbose_)
-              std::cout << "Image Min/Max:" << imgMin << "/" << imgMax << "\t applyHistogramEqualization=" << applyHistogramEqualization << std::endl;
+        for(int l=endLevel_;l<=startLevel_;l++){
+          cv::Mat1b backConverted;
+          meas.aux().pyr_[camID].imgs_[0].convertTo(backConverted, CV_8U);
+          cv::Mat1s diff;
+          cv::subtract(meas.aux().refImg, backConverted, diff);
+          double sumOfDiffs = cv::sum(cv::abs(diff))[0];
+          std::cout << "The sum of difference(l 1000): " << sumOfDiffs << '\n';
+          meas.aux().pyr_[camID].detectFastCorners(candidates_,l,fastDetectionThreshold_, mpMultiCamera_->cameras_[camID].valid_radius_);
 
-          //Detect FAST corners, equalize image if 16-bit before application of OpenCV FAST detector
-          for (int l = endLevel_; l <= startLevel_; l++)
-          {
-              meas.aux().pyr_[camID].detectFastCorners(candidates_, l, fastDetectionThreshold_,std::numeric_limits<float>::max(), applyHistogramEqualization);
-          }
-          //CUSTOMIZATION
+        }
         const double t2 = (double) cv::getTickCount();
         if(verbose_) std::cout << "== Detected " << candidates_.size() << " on levels " << endLevel_ << "-" << startLevel_ << " (" << (t2-t1)/cv::getTickFrequency()*1000 << " ms)" << std::endl;
         std::unordered_set<unsigned int> newSet = filterState.fsm_.addBestCandidates(candidates_,meas.aux().pyr_[camID],camID,filterState.t_,
