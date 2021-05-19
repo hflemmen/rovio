@@ -84,9 +84,21 @@ class ImgUpdateMeasAuxiliary: public LWF::AuxiliaryBase<ImgUpdateMeasAuxiliary<S
     }
     return true;
   }
+  ImgUpdateMeasAuxiliary& operator=(const ImgUpdateMeasAuxiliary other)
+  {
+//    std::cout << "copy assignment of imgMeasAux\n";
+    for (int i = 0; i < STATE::nCam_; ++i) {
+      pyr_[i] = other.pyr_[i];
+      isValidPyr_[i] = other.isValidPyr_[i];
+    }
+    imgTime_ = other.imgTime_;
+    other.refImg.copyTo(refImg);
+    return *this;
+  }
   ImagePyramid<STATE::nLevels_> pyr_[STATE::nCam_];
   bool isValidPyr_[STATE::nCam_];
   double imgTime_;
+  cv::Mat1b refImg;
 };
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -587,7 +599,13 @@ ImgOutlierDetection<typename FILTERSTATE::mtState>,false>{
     assert(filterState.t_ == meas.aux().imgTime_);
     for(int i=0;i<mtState::nCam_;i++){
       if(doFrameVisualisation_){
-        cvtColor(meas.aux().pyr_[i].imgs_[0], filterState.img_[i], CV_GRAY2RGB);
+          //CUSTOMIZATION from rotio
+          //Check if image needs to be normalized for display purposes
+          cv::Mat tmpImg;
+          meas.aux().pyr_[i].imgs_[0].convertTo(tmpImg, CV_8UC1);
+          //Convert Image to color for drawing purposes
+          cvtColor(tmpImg, filterState.img_[i], CV_GRAY2RGB);
+          //CUSTOMIZATION
       }
     }
     filterState.imgTime_ = filterState.t_;
@@ -984,6 +1002,14 @@ ImgOutlierDetection<typename FILTERSTATE::mtState>,false>{
         if(verbose_) std::cout << "Adding keypoints" << std::endl;
         const double t1 = (double) cv::getTickCount();
         candidates_.clear();
+        // Custom check for float image
+        cv::Mat1b backConverted;
+        meas.aux().pyr_[0].imgs_[0].convertTo(backConverted, CV_8U);
+        cv::Mat1s diff;
+        cv::subtract(meas.aux().refImg, backConverted, diff);
+        double sumOfDiffs = cv::sum(cv::abs(diff))[0];
+        std::cout << "Pixel difference between images before detect fast corners: " << sumOfDiffs << "\n";
+        //
         for(int l=endLevel_;l<=startLevel_;l++){
           meas.aux().pyr_[camID].detectFastCorners(candidates_,l,fastDetectionThreshold_, mpMultiCamera_->cameras_[camID].valid_radius_);
         }

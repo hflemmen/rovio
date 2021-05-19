@@ -138,14 +138,21 @@ class ImagePyramid{
    */
   void detectFastCorners(FeatureCoordinatesVec & candidates, int l, int detectionThreshold, double valid_radius = std::numeric_limits<double>::max()) const{
     std::vector<cv::KeyPoint> keypoints;
+
+    //CUSTOMIZATION from rotio
+    cv::Mat temp;
+    imgs_[l].convertTo(temp, CV_8UC1); //smk: needed as original input image is saved as float now, which is not accepted by FAST detector
+    //CUSTOMIZATION
+
+
 #if (CV_MAJOR_VERSION < 3)
     cv::FastFeatureDetector feature_detector_fast(detectionThreshold, true);
-    feature_detector_fast.detect(imgs_[l], keypoints);
+    feature_detector_fast.detect(temp, keypoints); //CUSTOMIZATION
 #else
     auto feature_detector_fast = cv::FastFeatureDetector::create(detectionThreshold, true);
-    feature_detector_fast->detect(imgs_[l], keypoints);
+    feature_detector_fast->detect(temp, keypoints); //CUSTOMIZATION
 #endif
-
+    std::cout << "Detected corners: " << keypoints.size() << '\n';
     candidates.reserve(candidates.size()+keypoints.size());
     for (auto it = keypoints.cbegin(), end = keypoints.cend(); it != end; ++it) {
 

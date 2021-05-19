@@ -142,29 +142,45 @@ class Patch {
    *   @param withBorder - Draw either the patch patch_ (withBorder = false) or the expanded patch
    *                       patchWithBorder_ (withBorder = true).
    */
-  void drawPatch(cv::Mat& drawImg,const cv::Point2i& c,int stretch = 1,const bool withBorder = false) const{
-    const int refStepY = drawImg.step.p[0];
-    const int refStepX = drawImg.step.p[1];
-    uint8_t* img_ptr;
-    const float* it_patch;
-    if(withBorder){
-      it_patch = patchWithBorder_;
-    } else {
-      it_patch = patch_;
-    }
-    for(int y=0; y<patchSize+2*(int)withBorder; ++y, it_patch += patchSize+2*(int)withBorder){
-      img_ptr = (uint8_t*) drawImg.data + (c.y+y*stretch)*refStepY + c.x*refStepX;
-      for(int x=0; x<patchSize+2*(int)withBorder; ++x)
-        for(int i=0;i<stretch;++i){
-          for(int j=0;j<stretch;++j){
-            img_ptr[x*stretch*refStepX+i*refStepY+j*refStepX+0] = (uint8_t)(it_patch[x]);
-            if(drawImg.channels() == 3){
-              img_ptr[x*stretch*refStepX+i*refStepY+j*refStepX+1] = (uint8_t)(it_patch[x]);
-              img_ptr[x*stretch*refStepX+i*refStepY+j*refStepX+2] = (uint8_t)(it_patch[x]);
-            }
-          }
-        }
-    }
+  void drawPatch(cv::Mat &drawImg, const cv::Point2i &c, int stretch = 1, const bool withBorder = false) const
+  {
+      // From rotio
+//      const int refStepY = drawImg.step.p[0];
+//      const int refStepX = drawImg.step.p[1];
+    const int refStepY = drawImg.step1(0);
+    const int refStepX = drawImg.step1(1);
+      //uint8_t *img_ptr; //ORIGINAL
+      float *img_ptr; //smk: replace by float*
+      const float *it_patch;
+      if (withBorder)
+      {
+          it_patch = patchWithBorder_;
+      }
+      else
+      {
+          it_patch = patch_;
+      }
+      for (int y = 0; y < patchSize + 2 * (int)withBorder; ++y, it_patch += patchSize + 2 * (int)withBorder)
+      {
+          //img_ptr = (uint8_t *)drawImg.data + (c.y + y * stretch) * refStepY + c.x * refStepX; //ORIGINAL
+          img_ptr = (float *)drawImg.data + (c.y + y * stretch) * refStepY + c.x * refStepX; //CUSTOMIZATION
+          for (int x = 0; x < patchSize + 2 * (int)withBorder; ++x)
+              for (int i = 0; i < stretch; ++i)
+              {
+                  for (int j = 0; j < stretch; ++j)
+                  {
+                      //img_ptr[x * stretch * refStepX + i * refStepY + j * refStepX + 0] = (uint8_t)(it_patch[x]); //ORIGINAL
+                      img_ptr[x * stretch * refStepX + i * refStepY + j * refStepX + 0] = (float)(it_patch[x]); //CUSTOMIZATION
+                      if (drawImg.channels() == 3)
+                      {
+                          //img_ptr[x * stretch * refStepX + i * refStepY + j * refStepX + 1] = (uint8_t)(it_patch[x]); //ORIGINAL
+                          //img_ptr[x * stretch * refStepX + i * refStepY + j * refStepX + 2] = (uint8_t)(it_patch[x]); //ORIGINAL
+                          img_ptr[x * stretch * refStepX + i * refStepY + j * refStepX + 1] = (float)(it_patch[x]); //CUSTOMIZATION
+                          img_ptr[x * stretch * refStepX + i * refStepY + j * refStepX + 2] = (float)(it_patch[x]); //CUSTOMIZATION
+                      }
+                  }
+              }
+      }
   }
 
   /** \brief Draws the patch borders into an image.
@@ -240,10 +256,11 @@ class Patch {
   void extractPatchFromImage(const cv::Mat& img,const FeatureCoordinates& c,const bool withBorder = false){
     assert(isPatchInFrame(img,c,withBorder));
     const int halfpatch_size = patchSize/2+(int)withBorder;
-    const int refStep = img.step.p[0];
-
+//    const int refStep = img.step.p[0]; // Original
+    const int refStep = img.step1(0); // Edited to accomedate the size of float.
     // Get Pointers
-    uint8_t* img_ptr;
+    //uint8_t *img_ptr; //ORIGINAL
+    float *img_ptr; //smk: replace by float*
     float* patch_ptr;
     if(withBorder){
       patch_ptr = patchWithBorder_;
@@ -263,7 +280,7 @@ class Patch {
       const float wBL = (1.0-subpix_x)*subpix_y;
       const float wBR = subpix_x * subpix_y;
       for(int y=0; y<2*halfpatch_size; ++y){
-        img_ptr = (uint8_t*) img.data + (v_r+y-halfpatch_size)*refStep + u_r-halfpatch_size;
+        img_ptr = (float*) img.data + (v_r+y-halfpatch_size)*refStep + u_r-halfpatch_size; // CUstom from rotio
         for(int x=0; x<2*halfpatch_size; ++x, ++img_ptr, ++patch_ptr)
         {
           *patch_ptr = wTL*img_ptr[0];
@@ -289,7 +306,7 @@ class Patch {
           const float wTR = subpix_x * (1.0-subpix_y);
           const float wBL = (1.0-subpix_x) * subpix_y;
           const float wBR = subpix_x * subpix_y;
-          img_ptr = (uint8_t*) img.data + v_r*refStep + u_r;
+          img_ptr = (float*) img.data + v_r*refStep + u_r; //CUSTOM from rotio
           *patch_ptr = wTL*img_ptr[0];
           if(subpix_x > 0) *patch_ptr += wTR*img_ptr[1];
           if(subpix_y > 0) *patch_ptr += wBL*img_ptr[refStep];
