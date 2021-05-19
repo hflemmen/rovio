@@ -499,13 +499,27 @@ class RovioNode{
     // Get image from msg
     cv_bridge::CvImagePtr cv_ptr;
     try {
-      cv_ptr = cv_bridge::toCvCopy(img, sensor_msgs::image_encodings::TYPE_8UC1);
+
+        //CUTOMIZATION from rotio
+        //cv_ptr = cv_bridge::toCvCopy(img, sensor_msgs::image_encodings::TYPE_8UC1);
+        cv_ptr = cv_bridge::toCvCopy(img, img->encoding); //smk: input image encoding doesn't matter as it gets converted to float point later
+        //CUTOMIZATION
     } catch (cv_bridge::Exception& e) {
       ROS_ERROR("cv_bridge exception: %s", e.what());
       return;
     }
-    cv::Mat cv_img;
-    cv_ptr->image.copyTo(cv_img);
+    cv::Mat1b cv_img;
+    if (cv_ptr->encoding == "bgr8"){
+      cv::cvtColor(cv_ptr->image, cv_img, CV_BGR2GRAY);
+    }
+    else if (cv_ptr->encoding == "rgb8"){
+      cv::cvtColor(cv_ptr->image, cv_img, CV_RGB2GRAY);
+    }
+    else {
+      cv_ptr->image.convertTo(cv_img,
+                              CV_8UC1); //smk: convert incoming image to floating point value, this can deal with single channel 8 and 16 bit images
+      cv_img = cv_ptr->image;
+    }
     if(init_state_.isInitialized() && !cv_img.empty()){
       double msgTime = img->header.stamp.toSec();
       if(msgTime != imgUpdateMeas_.template get<mtImgMeas::_aux>().imgTime_){

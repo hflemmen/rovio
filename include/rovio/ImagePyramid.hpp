@@ -145,7 +145,7 @@ class ImagePyramid{
     auto feature_detector_fast = cv::FastFeatureDetector::create(detectionThreshold, true);
     feature_detector_fast->detect(imgs_[l], keypoints);
 #endif
-
+    std::cout << "Detected corners: " << keypoints.size() << '\n';
     candidates.reserve(candidates.size()+keypoints.size());
     for (auto it = keypoints.cbegin(), end = keypoints.cend(); it != end; ++it) {
 
